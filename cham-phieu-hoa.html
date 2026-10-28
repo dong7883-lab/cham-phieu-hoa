@@ -268,9 +268,13 @@ let mode="loading"; // loading | db | local
 let db=null, downloads=null;
 const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null,unsure:[]});
 let sampleFn=null, sampleImgMax=0, scanCtl=null, shotUrl=null;
-let scanState={busy:false,kind:"",msg:"",goKeys:false};
+let scanState={busy:false,kind:"",msg:"",extra:""};
 const SDK_URL="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm";
 const API_MODEL="claude-opus-5-5";
+const ARTIFACT_URL="https://claude.ai/artifact/QVaqJJJSNdXpBF4MEAwJaU";
+const framed=(()=>{try{return window.top!==window}catch(e){return true}})();
+// Trang đang nằm trong Claude (web hoặc app), kể cả khi app không cấp bộ kết nối window.claude
+function inClaudeShell(){return !!window.claude||framed||/(^|\.)(claude\.ai|claude\.site|claudeusercontent\.com)$/i.test(location.hostname)}
 let draft=Object.assign(blankDraft(),LS.get("cb.draft",{}));
 const ui=Object.assign({tab:"grade",exam:"",check:true,listExam:"",listCls:""},LS.get("cb.ui",{}));
 ui.act=null; ui.delAsk=false; ui.keyEdit=null; ui.keyDelAsk=false;
@@ -312,6 +316,7 @@ function errMsg(e){const c=e&&e.code;if(c==="quota_exceeded")return "Bộ nhớ 
 async function init(){
   renderAll();
   let d=null;
+  if(!window.claude&&inClaudeShell())for(let i=0;i<15&&!window.claude;i++)await new Promise(r=>setTimeout(r,200));
   try{if(window.claude&&typeof window.claude.use==="function"){
     [d,downloads,sampleFn]=await Promise.all([window.claude.use("db"),window.claude.use("downloads"),window.claude.use("sample")]);
     if(sampleFn){const lim=await sampleFn.limits().catch(()=>null);sampleImgMax=lim&&lim.images?lim.images.maxCount:0}
@@ -328,7 +333,22 @@ async function init(){
 
 /* ---------- scan: đọc phiếu từ ảnh ---------- */
 function apiKey(){return LS.get("cb.apikey","")}
-function scanEngine(){if(sampleFn&&sampleImgMax>0)return"claude";if(!window.claude&&apiKey())return"api";return null}
+function scanEngine(){if(sampleFn&&sampleImgMax>0)return"claude";if(!inClaudeShell()&&apiKey())return"api";return null}
+// Vì sao chưa đọc ảnh được; mã hiện kèm thông báo để dò lỗi
+function scanEnv(){
+  if(mode==="loading")return"loading";
+  if(sampleFn&&sampleImgMax>0)return"ok";
+  if(window.claude)return sampleFn?"no-images":"no-sample";
+  if(inClaudeShell())return"no-runtime";
+  return apiKey()?"ok":"no-key";
+}
+function envMsg(env){
+  const fix=" Cách khắc phục: cập nhật app Claude lên bản mới nhất, hoặc sao chép link rồi mở bằng Chrome/Safari đã đăng nhập claude.ai.";
+  if(env==="no-runtime")return "App Claude trên điện thoại này chưa chạy được tính năng đọc ảnh trong trang (mã: no-runtime). Điểm chấm ở chế độ này chỉ lưu trên máy, không đồng bộ."+fix;
+  if(env==="no-images"||env==="no-sample")return `Claude trên thiết bị này chưa cho trang gửi ảnh (mã: ${env}).`+fix;
+  if(env==="no-key")return "Bản chạy ngoài Claude cần API key Anthropic để đọc ảnh phiếu (mã: no-key).";
+  return "";
+}
 function toJpeg(src,sx,sy,sw,sh,maxSide){
   const s=Math.min(1,maxSide/Math.max(sw,sh)),c=document.createElement("canvas");c.width=Math.round(sw*s);c.height=Math.round(sh*s);
   c.getContext("2d").drawImage(src,sx,sy,sw,sh,0,0,c.width,c.height);
@@ -406,21 +426,27 @@ function scanErr(e){
     default:return "Đọc phiếu bị gián đoạn. Thử chụp lại.";
   }
 }
-function setScan(kind,msg,goKeys){scanState={busy:false,kind,msg,goKeys:!!goKeys};renderScan()}
+function setScan(kind,msg,extra){scanState={busy:false,kind,msg,extra:extra||""};renderScan()}
+function scanExtraBtn(x){return x==="keys"?'<button class="btn" data-act="tab" data-tab="keys">Mở tab Đáp án</button>':x==="copy"?'<button class="btn" data-act="copy-link">Sao chép link</button>':""}
 function renderScan(){
   const st=$("scanStatus"),img=$("shot"),busy=scanState.busy;
   document.querySelectorAll('[data-act="scan-cam"],[data-act="scan-pick"]').forEach(b=>b.disabled=busy);
   if(busy)st.innerHTML=`<div class="scan-status"><span class="spin" aria-hidden="true"></span><span class="sp">${esc(scanState.msg)}</span><button class="btn" data-act="scan-stop">Dừng</button></div>`;
-  else if(scanState.msg)st.innerHTML=`<div class="hint ${scanState.kind==="ok"?"info":"warn"}"><span>${esc(scanState.msg)}</span>${scanState.goKeys?'<button class="btn" data-act="tab" data-tab="keys">Mở tab Đáp án</button>':""}</div>`;
-  else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.${!window.claude&&!apiKey()?" Bản này cần API key (xem tab Đáp án).":""}</span>`;
+  else if(scanState.msg)st.innerHTML=`<div class="hint ${scanState.kind==="ok"?"info":"warn"}"><span>${esc(scanState.msg)}</span>${scanExtraBtn(scanState.extra)}</div>`;
+  else{
+    const env=scanEnv();
+    if(env==="no-runtime"||env==="no-images"||env==="no-sample")st.innerHTML=`<div class="hint warn"><span>${esc(envMsg(env))}</span>${scanExtraBtn("copy")}</div>`;
+    else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.${env==="no-key"?" Bản này cần API key (xem tab Đáp án).":""}</span>`;
+  }
   img.hidden=!shotUrl;if(shotUrl&&img.getAttribute("src")!==shotUrl)img.src=shotUrl;
 }
 async function startScan(file){
   if(scanState.busy)return;
   const eng=scanEngine();
   if(!eng){
-    if(window.claude)setScan("warn",mode==="loading"?"Ứng dụng đang khởi động, đợi vài giây rồi chụp lại.":"Trang này chưa được phép gửi ảnh cho Claude, nên chưa đọc phiếu được.");
-    else setScan("warn","Bản chạy ngoài Claude cần API key Anthropic để đọc ảnh phiếu.",true);
+    const env=scanEnv();
+    if(env==="loading")setScan("warn","Ứng dụng đang khởi động, đợi vài giây rồi chụp lại.");
+    else setScan("warn",envMsg(env),env==="no-key"?"keys":"copy");
     return;
   }
   let imgs;
@@ -429,7 +455,7 @@ async function startScan(file){
   shotUrl=URL.createObjectURL(imgs[0]);
   if(eng==="claude"&&imgs.length>sampleImgMax)imgs=imgs.slice(0,sampleImgMax);
   scanCtl=new AbortController();
-  scanState={busy:true,kind:"",msg:"Claude đang đọc phiếu… thường mất 10–40 giây.",goKeys:false};renderScan();
+  scanState={busy:true,kind:"",msg:"Claude đang đọc phiếu… thường mất 10–40 giây.",extra:""};renderScan();
   try{
     const o=eng==="claude"?await sampleFn.json(scanPrompt(imgs.length),{images:imgs,signal:scanCtl.signal}):await apiScan(imgs,scanCtl.signal);
     scanState.busy=false;setScan("ok",applyScan(o));
@@ -627,7 +653,7 @@ function renderList(){
 /* ---------- files ---------- */
 async function saveFile(filename,data,mime){
   if(downloads){try{await downloads.save({filename,data});return true}catch(e){if(e&&e.code!=="declined")toast("Không tải được file ("+(e.code||"lỗi")+").");return false}}
-  if(window.claude){toast("Trang này không tải file được. Dùng nút Sao chép bảng.");return false}
+  if(inClaudeShell()){toast("Trang này không tải file được. Dùng nút Sao chép bảng.");return false}
   const url=URL.createObjectURL(new Blob([data],{type:mime}));const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);return true;
 }
 async function exportBackup(){
@@ -678,7 +704,7 @@ function renderKeys(){
   const local=mode==="local"?`<div class="hint warn">Dữ liệu chỉ lưu trong trình duyệt của máy này. Nhớ tải file sao lưu sau mỗi buổi chấm.</div>`:"";
   const backup=`<div class="card"><div class="eyebrow">Sao lưu dữ liệu</div><span class="muted">Tải về một file .json chứa toàn bộ đáp án và bài đã chấm, hoặc nhập lại từ file đó (dùng để chuyển sang máy khác).</span>
     <div class="tools"><button class="btn" data-act="backup">Tải file sao lưu</button><button class="btn" data-act="import">Nhập từ file</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></div>`
-    +(window.claude?"":aiCard());
+    +(inClaudeShell()?"":aiCard());
   if(!keys.length){el.innerHTML=local+`<div class="empty"><b>${mode==="loading"?"Đang tải đáp án…":"Chưa có đáp án nào"}</b><span>Nhập đáp án từng mã đề theo phiếu đáp án, hoặc nhập từ file sao lưu.</span><button class="btn primary" data-act="key-new">Thêm mã đề</button></div>`+backup;return}
   const groups={};keys.forEach(k=>{const g=k.exam+"|"+k.grade;(groups[g]=groups[g]||[]).push(k)});
   let h=local+`<button class="btn primary" data-act="key-new">+ Thêm mã đề</button>`;
@@ -732,7 +758,7 @@ async function saveKey(){
 let dT;function changed(){renderTop();renderHint();renderP1();renderP2();renderP3();renderP4();clearTimeout(dT);dT=setTimeout(()=>LS.set("cb.draft",draft),300)}
 function saveUi(){LS.set("cb.ui",{tab:ui.tab,exam:ui.exam,check:ui.check,listExam:ui.listExam,listCls:ui.listCls})}
 function resetDraft(){const keep={cls:draft.cls};draft=Object.assign(blankDraft(),keep);ui.delAsk=false;ui.act=null;ui.unsWarned=false;
-  if(scanCtl)scanCtl.abort();if(shotUrl){URL.revokeObjectURL(shotUrl);shotUrl=null}$("shot").classList.remove("big");scanState={busy:false,kind:"",msg:"",goKeys:false};LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"})}
+  if(scanCtl)scanCtl.abort();if(shotUrl){URL.revokeObjectURL(shotUrl);shotUrl=null}$("shot").classList.remove("big");scanState={busy:false,kind:"",msg:"",extra:""};LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"})}
 async function saveResult(){
   const k=keyById(draft.keyId);
   if(!k){toast("Chọn mã đề trước khi lưu.");return}
@@ -778,6 +804,7 @@ document.addEventListener("click",async ev=>{
     case "scan-pick":$("pickFile").click();break;
     case "scan-stop":if(scanCtl)scanCtl.abort();break;
     case "shot":t.classList.toggle("big");break;
+    case "copy-link":try{await navigator.clipboard.writeText(ARTIFACT_URL);toast("Đã chép link. Dán vào Chrome hoặc Safari.")}catch(e){setScan("warn","Chép link này rồi mở bằng Chrome/Safari: "+ARTIFACT_URL)}break;
     case "key-ai-save":{const v=$("apiKeyIn").value.trim();if(!/^sk-ant-/.test(v)){toast("API key phải bắt đầu bằng sk-ant-");break}LS.set("cb.apikey",v);toast("Đã lưu API key trên máy này.");renderKeys();break}
     case "key-ai-del":try{localStorage.removeItem("cb.apikey")}catch(e){}toast("Đã xoá API key khỏi máy này.");renderKeys();break;
     case "clear":resetDraft();break;
