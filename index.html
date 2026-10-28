@@ -98,6 +98,20 @@ section{display:flex;flex-direction:column;gap:14px}
 .cell.bad{border-color:var(--bad);background:var(--bad-soft)}
 .cell.bad b{color:var(--bad);text-decoration:line-through;text-decoration-thickness:2px}
 .cell.act{border-color:var(--pen);box-shadow:0 0 0 2px var(--pen)}
+.cell.uns{border-style:dashed;border-color:var(--warn);background:var(--warn-soft)}
+.cell.uns::after{content:"?";position:absolute;top:2px;left:5px;font-size:11px;font-weight:700;color:var(--warn)}
+
+/* scan */
+.scan-btns{display:grid;grid-template-columns:1fr auto;gap:10px}
+.scan-btns .btn{white-space:nowrap}
+.btn svg{width:20px;height:20px;flex:none}
+.scan-status{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--pen);background:var(--pen-soft);border-radius:8px;padding:8px 8px 8px 12px}
+.scan-status .sp{flex:1}
+.scan-status .btn{min-height:36px;font-size:13px;padding:0 12px}
+.spin{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.shot{display:block;width:100%;max-height:170px;object-fit:cover;object-position:top;border-radius:8px;border:1px solid var(--line);cursor:zoom-in}
+.shot.big{max-height:none;object-fit:contain;cursor:zoom-out}
 
 .tf-q{display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13.5px}
 .tf-q small{color:var(--ink2);font-weight:500;font-size:12px}
@@ -111,6 +125,8 @@ section{display:flex;flex-direction:column;gap:14px}
 .seg button.on{background:var(--pen);color:var(--pen-ink)}
 .seg.ok{border-color:var(--ok)} .seg.ok button.on{background:var(--ok);color:var(--sheet)}
 .seg.bad{border-color:var(--bad)} .seg.bad button.on{background:var(--bad);color:var(--sheet)}
+.seg.uns{border-style:dashed;border-color:var(--warn)}
+.fld input.uns{border:1.5px dashed var(--warn);background:var(--warn-soft)}
 .p2box{display:flex;flex-direction:column;gap:8px}
 .p2box+.p2box{border-top:1px dashed var(--line);padding-top:10px}
 
@@ -205,6 +221,16 @@ main.kp-open~#toast{bottom:calc(300px + env(safe-area-inset-bottom,0px))}
 <main id="main"><div class="wrap">
   <section id="tab-grade">
     <div id="editBar"></div>
+    <div class="card" id="scanCard">
+      <div class="scan-btns">
+        <button class="btn primary" data-act="scan-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Chụp phiếu</button>
+        <button class="btn" data-act="scan-pick">Chọn ảnh</button>
+      </div>
+      <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
+      <input type="file" id="pickFile" accept="image/*" hidden>
+      <div id="scanStatus"></div>
+      <img id="shot" class="shot" alt="Ảnh phiếu vừa chụp, chạm để phóng to" data-act="shot" hidden>
+    </div>
     <div class="card">
       <div class="row2">
         <label class="fld"><span>Kì kiểm tra</span><select id="examSel"></select></label>
@@ -251,7 +277,11 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 let keys=[], results=[];
 let mode="loading"; // loading | db | local
 let db=null, downloads=null;
-const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null});
+const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null,unsure:[]});
+let sampleFn=null, sampleImgMax=0, scanCtl=null, shotUrl=null;
+let scanState={busy:false,kind:"",msg:"",goKeys:false};
+const SDK_URL="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm";
+const API_MODEL="claude-opus-5-5";
 let draft=Object.assign(blankDraft(),LS.get("cb.draft",{}));
 const ui=Object.assign({tab:"grade",exam:"",check:true,listExam:"",listCls:""},LS.get("cb.ui",{}));
 ui.act=null; ui.delAsk=false; ui.keyEdit=null; ui.keyDelAsk=false;
@@ -293,7 +323,10 @@ function errMsg(e){const c=e&&e.code;if(c==="quota_exceeded")return "Bộ nhớ 
 async function init(){
   renderAll();
   let d=null;
-  try{if(window.claude&&typeof window.claude.use==="function"){d=await window.claude.use("db");downloads=await window.claude.use("downloads")}}catch(e){d=null}
+  try{if(window.claude&&typeof window.claude.use==="function"){
+    [d,downloads,sampleFn]=await Promise.all([window.claude.use("db"),window.claude.use("downloads"),window.claude.use("sample")]);
+    if(sampleFn){const lim=await sampleFn.limits().catch(()=>null);sampleImgMax=lim&&lim.images?lim.images.maxCount:0}
+  }}catch(e){d=null}
   if(d){
     db=d;mode="db";
     db.collection("keys").onSnapshot(s=>{keys=s.docs.map(x=>Object.assign({id:x.id},x.data()));renderAll()},()=>toast("Mất kết nối dữ liệu đáp án."));
@@ -303,6 +336,148 @@ async function init(){
   }
   renderAll();
 }
+
+/* ---------- scan: đọc phiếu từ ảnh ---------- */
+function apiKey(){return LS.get("cb.apikey","")}
+function scanEngine(){if(sampleFn&&sampleImgMax>0)return"claude";if(!window.claude&&apiKey())return"api";return null}
+function toJpeg(src,sx,sy,sw,sh,maxSide){
+  const s=Math.min(1,maxSide/Math.max(sw,sh)),c=document.createElement("canvas");c.width=Math.round(sw*s);c.height=Math.round(sh*s);
+  c.getContext("2d").drawImage(src,sx,sy,sw,sh,0,0,c.width,c.height);
+  return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("toBlob")),"image/jpeg",0.88));
+}
+async function prepImages(file){
+  let src;
+  try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}
+  catch(e){const url=URL.createObjectURL(file);try{src=new Image();src.src=url;await src.decode()}finally{URL.revokeObjectURL(url)}}
+  const W=src.width||src.naturalWidth,H=src.height||src.naturalHeight;
+  const out=[await toJpeg(src,0,0,W,H,2000)];
+  // Ảnh dọc: thêm một ảnh cắt nửa trên (thông tin + Phần I–III) để chữ viết tay rõ hơn
+  if(H>W*1.15)out.push(await toJpeg(src,0,0,W,Math.round(H*0.56),1800));
+  return out;
+}
+function scanPrompt(n){return `${n>1?"Ảnh thứ nhất là cả tờ, ảnh thứ hai phóng to nửa trên của":"Ảnh là"} một "PHIẾU LÀM BÀI KIỂM TRA ĐỊNH KÌ – MÔN HOÁ HỌC" do học sinh viết tay. Ảnh có thể hơi nghiêng hoặc xoay. Hãy CHÉP LẠI đúng những gì học sinh viết; không tự sửa cho đúng, không đoán đáp án.
+
+Bố cục phiếu:
+- Ô thông tin: "Họ và tên học sinh", "Lớp", "Mã đề" viết tay trên dòng chấm.
+- PHẦN I: bảng 2 hàng; hàng "Câu" ghi 1–12, hàng "Đáp án" mỗi ô một chữ A, B, C hoặc D.
+- PHẦN II: hàng "Câu 13" và "Câu 14"; mỗi ý a), b), c), d) có 2 cột "Đúng" và "Sai"; học sinh đánh dấu X vào một cột.
+- PHẦN III: hàng "Câu" ghi 15–22, hàng "Đáp án" là số (có thể có dấu phẩy thập phân, dấu trừ).
+- PHẦN IV là tự luận: bỏ qua.
+
+Quy tắc:
+- Ô bị gạch chéo rồi viết lại: lấy đáp án viết lại sau cùng. Gạch mà không viết lại: coi là bỏ trống.
+- Ô trống: "".
+- Phần II: X ở cột Đúng → "D", ở cột Sai → "S"; không đánh, đánh cả hai cột hoặc không rõ → "" và ghi vào unsure.
+- Phần III: chép số đúng như viết, dùng dấu phẩy thập phân (đổi dấu chấm thành dấu phẩy), giữ dấu trừ, bỏ đơn vị và dấu %.
+- Lớp viết liền, ví dụ "10A1". Mã đề chỉ gồm chữ số.
+- unsure: liệt kê mọi ô đọc không chắc chắn (nét chữ khó đọc, tẩy xoá, dễ nhầm như 1/7, 4/9, 0/6, A/D, B/D) bằng đúng các mã: "name", "cls", "code", "p1.1" … "p1.12", "p2.13a" … "p2.14d", "p3.15" … "p3.22".
+
+Chỉ trả lời một đối tượng JSON dạng:
+{"name":"…","cls":"…","code":"…","p1":[12 chuỗi],"p2":[[4 chuỗi cho câu 13],[4 chuỗi cho câu 14]],"p3":[8 chuỗi],"unsure":[…]}`}
+const SCAN_SCHEMA={type:"object",additionalProperties:false,required:["name","cls","code","p1","p2","p3","unsure"],properties:{
+  name:{type:"string"},cls:{type:"string"},code:{type:"string"},
+  p1:{type:"array",items:{type:"string",enum:["A","B","C","D",""]}},
+  p2:{type:"array",items:{type:"array",items:{type:"string",enum:["D","S",""]}}},
+  p3:{type:"array",items:{type:"string"}},
+  unsure:{type:"array",items:{type:"string"}}}};
+function blobB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=()=>rej(r.error);r.readAsDataURL(b)})}
+async function apiScan(imgs,signal){
+  const mod=await import(SDK_URL),Anthropic=mod.default;
+  const client=new Anthropic({apiKey:apiKey(),dangerouslyAllowBrowser:true});
+  const content=[];
+  for(const b of imgs)content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:await blobB64(b)}});
+  content.push({type:"text",text:scanPrompt(imgs.length)});
+  let msg;
+  try{
+    msg=await client.beta.messages.create({model:API_MODEL,max_tokens:16000,betas:["server-side-fallback-2026-07-01"],fallbacks:"default",
+      output_config:{effort:"medium",format:{type:"json_schema",schema:SCAN_SCHEMA}},messages:[{role:"user",content}]},{signal});
+  }catch(e){
+    if(e instanceof Anthropic.APIUserAbortError)throw{code:"cancelled"};
+    if(e instanceof Anthropic.AuthenticationError||e instanceof Anthropic.PermissionDeniedError)throw{code:"bad_key"};
+    if(e instanceof Anthropic.RateLimitError)throw{code:"rate_limited"};
+    if(e instanceof Anthropic.BadRequestError)throw{code:"bad_request",message:e.message};
+    if(e instanceof Anthropic.APIConnectionError)throw{code:"offline"};
+    throw{code:"upstream_error"};
+  }
+  if(msg.stop_reason==="refusal")throw{code:"refused"};
+  const t=msg.content.filter(c=>c.type==="text").map(c=>c.text).join("");
+  try{return JSON.parse(t)}catch(e){throw{code:"invalid_json"}}
+}
+function scanErr(e){
+  switch(e&&e.code){
+    case "not_granted":return "Chưa cho phép ứng dụng dùng Claude. Mở lại trang và chọn Cho phép khi được hỏi.";
+    case "rate_limited":return "Đang gửi quá nhiều ảnh hoặc đã hết lượt dùng. Đợi một lát rồi chụp lại.";
+    case "image_rejected":return "Ảnh không dùng được (quá lớn hoặc sai định dạng). Hãy chụp lại.";
+    case "invalid_json":case "empty_completion":return "Claude chưa đọc được phiếu này. Chụp lại rõ hơn, đủ sáng, cả tờ nằm trong khung.";
+    case "refused":return "Claude từ chối đọc ảnh này. Hãy chụp lại chỉ riêng tờ phiếu.";
+    case "session_expired":return "Phiên đăng nhập Claude đã hết. Đăng nhập lại rồi thử lại.";
+    case "bad_key":return "API key không đúng hoặc đã bị thu hồi. Vào tab Đáp án để nhập lại.";
+    case "offline":return "Không kết nối được tới Claude. Kiểm tra mạng rồi thử lại.";
+    case "bad_request":return "Yêu cầu bị từ chối: "+(e.message||"lỗi không rõ");
+    default:return "Đọc phiếu bị gián đoạn. Thử chụp lại.";
+  }
+}
+function setScan(kind,msg,goKeys){scanState={busy:false,kind,msg,goKeys:!!goKeys};renderScan()}
+function renderScan(){
+  const st=$("scanStatus"),img=$("shot"),busy=scanState.busy;
+  document.querySelectorAll('[data-act="scan-cam"],[data-act="scan-pick"]').forEach(b=>b.disabled=busy);
+  if(busy)st.innerHTML=`<div class="scan-status"><span class="spin" aria-hidden="true"></span><span class="sp">${esc(scanState.msg)}</span><button class="btn" data-act="scan-stop">Dừng</button></div>`;
+  else if(scanState.msg)st.innerHTML=`<div class="hint ${scanState.kind==="ok"?"info":"warn"}"><span>${esc(scanState.msg)}</span>${scanState.goKeys?'<button class="btn" data-act="tab" data-tab="keys">Mở tab Đáp án</button>':""}</div>`;
+  else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.${!window.claude&&!apiKey()?" Bản này cần API key (xem tab Đáp án).":""}</span>`;
+  img.hidden=!shotUrl;if(shotUrl&&img.getAttribute("src")!==shotUrl)img.src=shotUrl;
+}
+async function startScan(file){
+  if(scanState.busy)return;
+  const eng=scanEngine();
+  if(!eng){
+    if(window.claude)setScan("warn",mode==="loading"?"Ứng dụng đang khởi động, đợi vài giây rồi chụp lại.":"Trang này chưa được phép gửi ảnh cho Claude, nên chưa đọc phiếu được.");
+    else setScan("warn","Bản chạy ngoài Claude cần API key Anthropic để đọc ảnh phiếu.",true);
+    return;
+  }
+  let imgs;
+  try{imgs=await prepImages(file)}catch(e){setScan("warn","Không mở được ảnh này. Hãy chụp lại bằng nút Chụp phiếu.");return}
+  if(shotUrl)URL.revokeObjectURL(shotUrl);
+  shotUrl=URL.createObjectURL(imgs[0]);
+  if(eng==="claude"&&imgs.length>sampleImgMax)imgs=imgs.slice(0,sampleImgMax);
+  scanCtl=new AbortController();
+  scanState={busy:true,kind:"",msg:"Claude đang đọc phiếu… thường mất 10–40 giây.",goKeys:false};renderScan();
+  try{
+    const o=eng==="claude"?await sampleFn.json(scanPrompt(imgs.length),{images:imgs,signal:scanCtl.signal}):await apiScan(imgs,scanCtl.signal);
+    scanState.busy=false;setScan("ok",applyScan(o));
+  }catch(e){
+    scanState.busy=false;
+    if(e&&e.code==="cancelled")setScan("","");
+    else if(e&&e.code==="not_granted"&&eng==="claude"){sampleImgMax=0;setScan("warn",scanErr(e))}
+    else setScan("warn",scanErr(e));
+  }finally{scanCtl=null}
+}
+function applyScan(o){
+  if(!o||typeof o!=="object")throw{code:"invalid_json"};
+  const S=v=>String(v??"").trim(),pick=(a,n)=>Array.from({length:n},(_,i)=>Array.isArray(a)?a[i]:undefined);
+  const name=S(o.name).replace(/\s+/g," "),cls=S(o.cls).replace(/\s+/g,"").toUpperCase(),code=S(o.code).replace(/\D/g,"");
+  const keepId=draft.id,keepCreated=draft.createdAt,keepP4=draft.p4,keepNote=draft.note;
+  draft=Object.assign(blankDraft(),{id:keepId,createdAt:keepCreated,p4:keepP4,note:keepNote,name:name||draft.name,cls:cls||draft.cls});
+  draft.p1=pick(o.p1,N1).map(v=>{const x=S(v).toUpperCase();return /^[ABCD]$/.test(x)?x:""});
+  draft.p2=[0,1].map(q=>pick(Array.isArray(o.p2)?o.p2[q]:null,4).map(v=>{const x=S(v).toUpperCase();return x==="D"||x==="Đ"?"D":x==="S"?"S":""}));
+  draft.p3=pick(o.p3,N3).map(v=>S(v).replace(/\s+/g,"").replace(/\./g,",").replace(/%$/,"").slice(0,6));
+  const uns=new Set();
+  (Array.isArray(o.unsure)?o.unsure:[]).forEach(u=>{u=S(u).toLowerCase();let m;
+    if(u==="name"||u==="cls"||u==="code")uns.add(u);
+    else if((m=u.match(/^p1\.(\d+)$/))&&+m[1]>=1&&+m[1]<=N1)uns.add("p1-"+(+m[1]-1));
+    else if(m=u.match(/^p2\.(13|14)([abcd])$/))uns.add(`p2-${+m[1]-13}-${"abcd".indexOf(m[2])}`);
+    else if((m=u.match(/^p3\.(\d+)$/))&&+m[1]>=15&&+m[1]<15+N3)uns.add("p3-"+(+m[1]-15));});
+  draft.unsure=[...uns];
+  const g=gradeOf(draft.cls);
+  const k=code?(keys.find(x=>x.exam===ui.exam&&x.code===code&&(!g||x.grade===g))||keys.find(x=>x.code===code&&(!g||x.grade===g))):null;
+  if(k){draft.keyId=k.id;ui.exam=k.exam}
+  ui.act=null;ui.unsWarned=false;LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"});
+  let msg=`Đã đọc xong phiếu${name?" của "+name:""}.`;
+  if(!k)msg+=code?` Mã đề ${code} chưa có đáp án trong kì này, hãy chọn mã đề.`:" Chưa đọc được mã đề, hãy chọn mã đề.";
+  msg+=uns.size?` Có ${uns.size} ô cần soát lại (viền vàng nét đứt).`:" Soát nhanh các ô so với ảnh rồi chấm Phần IV.";
+  return msg;
+}
+function isUns(id){return draft.unsure&&draft.unsure.includes(id)}
+function clearUns(id){if(isUns(id)){draft.unsure=draft.unsure.filter(x=>x!==id);return true}return false}
 
 /* ---------- toast ---------- */
 let tT;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tT);tT=setTimeout(()=>t.hidden=true,2600)}
@@ -336,6 +511,7 @@ function renderCodes(){
 function renderHint(){
   const el=$("codeHint");const filled=draft.p1.filter(Boolean).length;const c=candKeys();
   let h="";
+  if(isUns("code"))h+=`<div class="hint warn"><span>Mã đề đọc chưa chắc chắn, hãy đối chiếu với ảnh rồi chọn lại.</span></div>`;
   if(filled>=6&&c.length>1){
     const m=c.map(k=>({k,n:score(k,draft).c1})).sort((a,b)=>b.n-a.n);const best=m[0];const cur=m.find(x=>x.k.id===draft.keyId);
     if(!cur&&best.n>=filled/2)h=`<div class="hint info"><span>Gợi ý: Phần I khớp mã <b>${esc(best.k.code)}</b> (${best.n}/${filled} câu đã nhập).</span><button class="btn" data-act="code" data-id="${esc(best.k.id)}">Chọn mã ${esc(best.k.code)}</button></div>`;
@@ -351,7 +527,7 @@ function cellState(v,k){if(!ui.check||!k)return"";if(!v)return"";return v===k?"o
 function renderP1(){
   const k=keyById(draft.keyId);let h="";
   for(let i=0;i<N1;i++){const v=draft.p1[i],kv=k?k.p1[i]:"",st=cellState(v,kv);const act=ui.act&&ui.act.p===1&&ui.act.i===i;
-    h+=`<button class="cell ${st} ${act?"act":""}" data-act="cell" data-p="1" data-i="${i}" aria-label="Câu ${i+1}"><i>${i+1}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
+    h+=`<button class="cell ${st} ${act?"act":""} ${isUns("p1-"+i)?"uns":""}" data-act="cell" data-p="1" data-i="${i}" aria-label="Câu ${i+1}"><i>${i+1}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
   $("p1").innerHTML=h;
   const sc=score(k,draft);$("g1").textContent=sc?f2(sc.s1)+" đ":"";
 }
@@ -360,7 +536,7 @@ function renderP2(){
   [0,1].forEach(q=>{
     h+=`<div class="p2box"><div class="tf-q">Câu ${13+q}<small>${sc?`${sc.c2[q]}/4 ý → <b>${f2(P2PTS[sc.c2[q]])} đ</b>`:""}</small></div><div class="tf-grid">`;
     for(let j=0;j<4;j++){const v=draft.p2[q][j],kv=k?k.p2[q][j]:"";const st=cellState(v,kv);
-      h+=`<div class="tf"><span>${"abcd"[j]})</span><div class="seg ${st}"><button class="${v==="D"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="D" aria-label="Câu ${13+q} ý ${"abcd"[j]} Đúng">Đ</button><button class="${v==="S"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="S" aria-label="Câu ${13+q} ý ${"abcd"[j]} Sai">S</button></div></div>`}
+      h+=`<div class="tf"><span>${"abcd"[j]})</span><div class="seg ${st} ${isUns(`p2-${q}-${j}`)?"uns":""}"><button class="${v==="D"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="D" aria-label="Câu ${13+q} ý ${"abcd"[j]} Đúng">Đ</button><button class="${v==="S"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="S" aria-label="Câu ${13+q} ý ${"abcd"[j]} Sai">S</button></div></div>`}
     h+=`</div></div>`;
   });
   $("p2").innerHTML=h;$("g2").textContent=sc?f2(sc.s2)+" đ":"";
@@ -368,7 +544,7 @@ function renderP2(){
 function renderP3(){
   const k=keyById(draft.keyId);let h="";
   for(let i=0;i<N3;i++){const v=draft.p3[i],kv=k?k.p3[i]:"";const st=!ui.check||!k||!v?"":eqShort(v,kv)?"ok":"bad";const act=ui.act&&ui.act.p===3&&ui.act.i===i;
-    h+=`<button class="cell ${st} ${act?"act":""}" data-act="cell" data-p="3" data-i="${i}" aria-label="Câu ${15+i}"><i>${15+i}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
+    h+=`<button class="cell ${st} ${act?"act":""} ${isUns("p3-"+i)?"uns":""}" data-act="cell" data-p="3" data-i="${i}" aria-label="Câu ${15+i}"><i>${15+i}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
   $("p3").innerHTML=h;const sc=score(k,draft);$("g3").textContent=sc?f2(sc.s3)+" đ":"";
 }
 function renderP4(){
@@ -389,6 +565,8 @@ function renderGrade(){
   if(document.activeElement!==$("name"))$("name").value=draft.name;
   if(document.activeElement!==$("note"))$("note").value=draft.note;
   $("check").checked=ui.check;
+  $("name").classList.toggle("uns",isUns("name"));$("cls").classList.toggle("uns",isUns("cls"));
+  renderScan();
 }
 
 /* ---------- keypad ---------- */
@@ -415,8 +593,8 @@ function keypad(k){
   const a=ui.act;if(!a)return;
   if(k==="hide"){setAct(null);return}
   if(a.p===1){
-    if("ABCD".includes(k)&&k.length===1){draft.p1[a.i]=k;changed();if(a.i<N1-1)setAct({p:1,i:a.i+1},true);else{setAct(null);document.querySelector("#p2").scrollIntoView({block:"start",behavior:"smooth"})}return}
-    if(k==="clr"){draft.p1[a.i]="";changed();return}
+    if("ABCD".includes(k)&&k.length===1){draft.p1[a.i]=k;clearUns("p1-"+a.i);changed();if(a.i<N1-1)setAct({p:1,i:a.i+1},true);else{setAct(null);document.querySelector("#p2").scrollIntoView({block:"start",behavior:"smooth"})}return}
+    if(k==="clr"){draft.p1[a.i]="";clearUns("p1-"+a.i);changed();return}
     if(k==="prev"&&a.i>0)setAct({p:1,i:a.i-1},true);
     if(k==="next"){if(a.i<N1-1)setAct({p:1,i:a.i+1},true);else setAct(null)}
     return;
@@ -427,7 +605,7 @@ function keypad(k){
   else if(k==="bs"){v=v.slice(0,-1)}
   else if(k==="prev"){if(a.i>0)setAct({p:3,i:a.i-1},true);return}
   else if(k==="next"){if(a.i<N3-1)setAct({p:3,i:a.i+1},true);else{setAct(null);document.querySelector("#p4").scrollIntoView({block:"start",behavior:"smooth"})}return}
-  draft.p3[a.i]=v;changed();
+  draft.p3[a.i]=v;clearUns("p3-"+a.i);changed();
 }
 
 /* ---------- render: list tab ---------- */
@@ -510,13 +688,21 @@ function renderKeys(){
   if(ui.keyEdit){renderKeyEditor();return}
   const local=mode==="local"?`<div class="hint warn">Dữ liệu chỉ lưu trong trình duyệt của máy này. Nhớ tải file sao lưu sau mỗi buổi chấm.</div>`:"";
   const backup=`<div class="card"><div class="eyebrow">Sao lưu dữ liệu</div><span class="muted">Tải về một file .json chứa toàn bộ đáp án và bài đã chấm, hoặc nhập lại từ file đó (dùng để chuyển sang máy khác).</span>
-    <div class="tools"><button class="btn" data-act="backup">Tải file sao lưu</button><button class="btn" data-act="import">Nhập từ file</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></div>`;
+    <div class="tools"><button class="btn" data-act="backup">Tải file sao lưu</button><button class="btn" data-act="import">Nhập từ file</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></div>`
+    +(window.claude?"":aiCard());
   if(!keys.length){el.innerHTML=local+`<div class="empty"><b>${mode==="loading"?"Đang tải đáp án…":"Chưa có đáp án nào"}</b><span>Nhập đáp án từng mã đề theo phiếu đáp án, hoặc nhập từ file sao lưu.</span><button class="btn primary" data-act="key-new">Thêm mã đề</button></div>`+backup;return}
   const groups={};keys.forEach(k=>{const g=k.exam+"|"+k.grade;(groups[g]=groups[g]||[]).push(k)});
   let h=local+`<button class="btn primary" data-act="key-new">+ Thêm mã đề</button>`;
   Object.keys(groups).sort((a,b)=>a.localeCompare(b,"vi",{numeric:true})).forEach(g=>{const [ex,gr]=g.split("|");
     h+=`<div class="kgroup"><h3>${esc(ex)} · Hoá ${esc(gr)}</h3><div class="rows">${groups[g].sort((a,b)=>a.code.localeCompare(b.code)).map(k=>`<button class="kcard" data-act="key-open" data-id="${esc(k.id)}"><span class="cd">${esc(k.code)}</span><span class="ans">${k.p1.join("")}</span><small>II: ${k.p2.map(r=>r.map(v=>v==="D"?"Đ":"S").join("")).join(" · ")} — III: ${k.p3.map(esc).join(" ; ")}</small></button>`).join("")}</div></div>`});
   el.innerHTML=h+backup;
+}
+function aiCard(){
+  const k=apiKey();
+  return `<div class="card"><div class="eyebrow">Đọc phiếu bằng camera</div>
+    <span class="muted">Bản chạy ngoài Claude cần API key Anthropic của chính thầy/cô (tạo tại console.anthropic.com, mục API Keys). Key chỉ lưu trong trình duyệt của máy này và chỉ gửi tới máy chủ Anthropic. Chi phí ước tính khoảng 1.000–1.500 đồng mỗi phiếu.</span>
+    ${k?`<div class="hint info"><span>Đã lưu key kết thúc bằng …${esc(k.slice(-4))}.</span><button class="btn" data-act="key-ai-del">Xoá key</button></div>`
+      :`<label class="fld"><span>API key</span><input id="apiKeyIn" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label><button class="btn primary" data-act="key-ai-save">Lưu key</button>`}</div>`;
 }
 function renderKeyEditor(){
   const e=ui.keyEdit;const ex=exams();
@@ -556,12 +742,14 @@ async function saveKey(){
 /* ---------- actions ---------- */
 let dT;function changed(){renderTop();renderHint();renderP1();renderP2();renderP3();renderP4();clearTimeout(dT);dT=setTimeout(()=>LS.set("cb.draft",draft),300)}
 function saveUi(){LS.set("cb.ui",{tab:ui.tab,exam:ui.exam,check:ui.check,listExam:ui.listExam,listCls:ui.listCls})}
-function resetDraft(){const keep={cls:draft.cls};draft=Object.assign(blankDraft(),keep);ui.delAsk=false;ui.act=null;LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"})}
+function resetDraft(){const keep={cls:draft.cls};draft=Object.assign(blankDraft(),keep);ui.delAsk=false;ui.act=null;ui.unsWarned=false;
+  if(scanCtl)scanCtl.abort();if(shotUrl){URL.revokeObjectURL(shotUrl);shotUrl=null}$("shot").classList.remove("big");scanState={busy:false,kind:"",msg:"",goKeys:false};LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"})}
 async function saveResult(){
   const k=keyById(draft.keyId);
   if(!k){toast("Chọn mã đề trước khi lưu.");return}
   if(!draft.name.trim()){toast("Nhập họ và tên học sinh.");$("name").focus();return}
   if(!draft.cls.trim()){toast("Nhập lớp.");$("cls").focus();return}
+  if(draft.unsure&&draft.unsure.length&&!ui.unsWarned){ui.unsWarned=true;toast(`Còn ${draft.unsure.length} ô viền vàng chưa soát. Bấm Lưu lần nữa để vẫn lưu.`);return}
   const s=score(k,draft);const now=Date.now();
   const r={id:draft.id||newId(),name:draft.name.trim().replace(/\s+/g," "),cls:draft.cls.trim().toUpperCase(),exam:k.exam,grade:k.grade,code:k.code,keyId:k.id,
     p1:draft.p1.slice(),p2:draft.p2.map(x=>x.slice()),p3:draft.p3.slice(),p4:draft.p4.slice(),note:draft.note.trim(),sum:s,createdAt:draft.createdAt||now,updatedAt:now};
@@ -591,12 +779,18 @@ document.addEventListener("click",async ev=>{
   const t=ev.target.closest("[data-act]");if(!t)return;const a=t.dataset.act,d=t.dataset;
   switch(a){
     case "tab":switchTab(d.tab);window.scrollTo({top:0});break;
-    case "code":{draft.keyId=d.id;const k=keyById(d.id);if(k)ui.exam=k.exam;renderExamSel();renderCodes();changed();break}
-    case "cell":{const p=+d.p,i=+d.i;if(ui.act&&ui.act.p===p&&ui.act.i===i)setAct(null);else{document.activeElement&&document.activeElement.blur&&document.activeElement.blur();setAct({p,i})}break}
+    case "code":{draft.keyId=d.id;clearUns("code");const k=keyById(d.id);if(k)ui.exam=k.exam;renderExamSel();renderCodes();changed();break}
+    case "cell":{const p=+d.p,i=+d.i;if(clearUns(`p${p}-${i}`))changed();if(ui.act&&ui.act.p===p&&ui.act.i===i)setAct(null);else{document.activeElement&&document.activeElement.blur&&document.activeElement.blur();setAct({p,i})}break}
     case "kp":keypad(d.k);break;
-    case "p2":{const q=+d.q,j=+d.j;draft.p2[q][j]=draft.p2[q][j]===d.v?"":d.v;if(ui.act)setAct(null);changed();break}
+    case "p2":{const q=+d.q,j=+d.j;const confirm=clearUns(`p2-${q}-${j}`)&&draft.p2[q][j]===d.v;if(!confirm)draft.p2[q][j]=draft.p2[q][j]===d.v?"":d.v;if(ui.act)setAct(null);changed();break}
     case "p4":{const i=+d.i,v=+d.v;draft.p4[i]=draft.p4[i]===v?null:v;changed();break}
     case "save":saveResult();break;
+    case "scan-cam":$("camFile").click();break;
+    case "scan-pick":$("pickFile").click();break;
+    case "scan-stop":if(scanCtl)scanCtl.abort();break;
+    case "shot":t.classList.toggle("big");break;
+    case "key-ai-save":{const v=$("apiKeyIn").value.trim();if(!/^sk-ant-/.test(v)){toast("API key phải bắt đầu bằng sk-ant-");break}LS.set("cb.apikey",v);toast("Đã lưu API key trên máy này.");renderKeys();break}
+    case "key-ai-del":try{localStorage.removeItem("cb.apikey")}catch(e){}toast("Đã xoá API key khỏi máy này.");renderKeys();break;
     case "clear":resetDraft();break;
     case "open":openResult(d.id);break;
     case "del-ask":ui.delAsk=true;renderEditBar();break;
@@ -619,8 +813,8 @@ document.addEventListener("click",async ev=>{
 });
 document.addEventListener("input",ev=>{
   const t=ev.target;
-  if(t.id==="name"){draft.name=t.value;changed()}
-  else if(t.id==="cls"){draft.cls=t.value;const k=keyById(draft.keyId),g=gradeOf(t.value);if(k&&g&&k.grade!==g)draft.keyId="";renderCodes();changed()}
+  if(t.id==="name"){draft.name=t.value;if(clearUns("name"))t.classList.remove("uns");changed()}
+  else if(t.id==="cls"){draft.cls=t.value;if(clearUns("cls"))t.classList.remove("uns");const k=keyById(draft.keyId),g=gradeOf(t.value);if(k&&g&&k.grade!==g)draft.keyId="";renderCodes();changed()}
   else if(t.id==="note"){draft.note=t.value;clearTimeout(dT);dT=setTimeout(()=>LS.set("cb.draft",draft),300)}
   else if(t.id==="kP1"){const v=t.value.toUpperCase().replace(/[^ABCD]/g,"");if(v!==t.value)t.value=v;$("kP1n").textContent=v.length}
 });
@@ -631,6 +825,7 @@ document.addEventListener("change",ev=>{
   else if(t.id==="lExam"){ui.listExam=t.value;ui.listCls="";saveUi();renderList()}
   else if(t.id==="lCls"){ui.listCls=t.value;saveUi();renderList()}
   else if(t.id==="importFile"&&t.files&&t.files[0]){importBackup(t.files[0]);t.value=""}
+  else if((t.id==="camFile"||t.id==="pickFile")&&t.files&&t.files[0]){startScan(t.files[0]);t.value=""}
 });
 document.addEventListener("focusin",ev=>{if(ev.target.matches("input,textarea,select")&&ui.act)setAct(null)});
 document.addEventListener("keydown",ev=>{
