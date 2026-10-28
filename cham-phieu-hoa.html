@@ -36,6 +36,7 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .tb-title{flex:1;min-width:0}
 .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:600}
 .tb-title h1{margin:0;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-title .eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .score{display:flex;align-items:center;gap:10px}
 .score-num{font-family:var(--f-num);font-weight:700;font-size:34px;line-height:1;color:var(--bad);font-variant-numeric:tabular-nums;min-width:2.4ch;text-align:right}
 .score-num.none{color:var(--ink2);font-size:24px}
@@ -183,6 +184,7 @@ section{display:flex;flex-direction:column;gap:14px}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:9;background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:9px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.2)}
 main.kp-open~#toast{bottom:calc(300px + env(safe-area-inset-bottom,0px))}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:440px){.score-sub .brk{display:none}.score-sub{max-width:7.5em}}
 @media (max-width:380px){.cell{min-height:52px}.cell b{font-size:18px}.stats{grid-template-columns:repeat(2,1fr)}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
@@ -301,7 +303,7 @@ function renderTop(){
     const k=keyById(draft.keyId),sc=score(k,draft);
     const who=draft.name?esc(draft.name):"Chưa nhập tên";
     $("topIn").innerHTML=`<div class="tb-title"><div class="eyebrow">${k?esc(k.exam)+" · Mã "+esc(k.code):"Chưa chọn mã đề"}</div><h1>${who}</h1></div>
-      <div class="score"><div class="score-sub">${sc?`<b>${words(sc.total)}</b><br>I ${sc.c1}/12 · II ${f2(sc.s2)} · III ${sc.c3}/8 · IV ${f2(sc.s4)}`:"Chọn mã đề<br>để tính điểm"}</div><div class="score-num ${sc?"":"none"}">${sc?f1(sc.total):"—"}</div></div>`;
+      <div class="score"><div class="score-sub">${sc?`<b>${words(sc.total)}</b><span class="brk"><br>I ${sc.c1}/12 · II ${f2(sc.s2)} · III ${sc.c3}/8 · IV ${f2(sc.s4)}</span>`:"Chọn mã đề<br>để tính điểm"}</div><div class="score-num ${sc?"":"none"}">${sc?f1(sc.total):"—"}</div></div>`;
   }else{
     const t=ui.tab==="list"?"Bảng điểm":"Đáp án các mã đề";
     $("topIn").innerHTML=`<div class="tb-title"><div class="eyebrow">Hoá học · Năm học ${SCHOOL_YEAR}</div><h1>${t}</h1></div>${st}`;
