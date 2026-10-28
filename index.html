@@ -357,7 +357,7 @@ function envMsg(env){
   const fix=" Cách khắc phục: cập nhật app Claude lên bản mới nhất, hoặc sao chép link rồi mở bằng Chrome/Safari đã đăng nhập claude.ai.";
   if(env==="no-runtime")return "App Claude trên điện thoại này chưa chạy được tính năng đọc ảnh trong trang (mã: no-runtime). Điểm chấm ở chế độ này chỉ lưu trên máy, không đồng bộ."+fix;
   if(env==="no-images"||env==="no-sample")return `Claude trên thiết bị này chưa cho trang gửi ảnh (mã: ${env}).`+fix;
-  if(env==="no-key")return "Bản chạy ngoài Claude cần API key Anthropic để đọc ảnh phiếu (mã: no-key).";
+  if(env==="no-key")return "Bản trên GitHub chưa có API key nên chưa đọc được ảnh (mã: no-key). Cách 1, không cần key: bấm Sao chép link, mở Chrome/Safari, dán vào thanh địa chỉ (đừng bấm link trực tiếp vì điện thoại có thể chuyển sang app Claude). Cách 2: nhập API key Anthropic ở tab Đáp án.";
   return "";
 }
 function toJpeg(src,sx,sy,sw,sh,maxSide){
@@ -438,7 +438,7 @@ function scanErr(e){
   }
 }
 function setScan(kind,msg,extra){scanState={busy:false,kind,msg,extra:extra||""};renderScan()}
-function scanExtraBtn(x){return x==="keys"?'<button class="btn" data-act="tab" data-tab="keys">Mở tab Đáp án</button>':x==="copy"?'<button class="btn" data-act="copy-link">Sao chép link</button>':""}
+function scanExtraBtn(x){const copy='<button class="btn" data-act="copy-link">Sao chép link</button>';return x==="keys"?copy+'<button class="btn" data-act="tab" data-tab="keys">Nhập API key</button>':x==="copy"?copy:""}
 function renderScan(){
   const st=$("scanStatus"),img=$("shot"),busy=scanState.busy;
   document.querySelectorAll('[data-act="scan-cam"],[data-act="scan-pick"]').forEach(b=>b.disabled=busy);
@@ -446,8 +446,8 @@ function renderScan(){
   else if(scanState.msg)st.innerHTML=`<div class="hint ${scanState.kind==="ok"?"info":"warn"}"><span>${esc(scanState.msg)}</span>${scanExtraBtn(scanState.extra)}</div>`;
   else{
     const env=scanEnv();
-    if(env==="no-runtime"||env==="no-images"||env==="no-sample")st.innerHTML=`<div class="hint warn"><span>${esc(envMsg(env))}</span>${scanExtraBtn("copy")}</div>`;
-    else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.${env==="no-key"?" Bản này cần API key (xem tab Đáp án).":""}</span>`;
+    if(env==="no-runtime"||env==="no-images"||env==="no-sample"||env==="no-key")st.innerHTML=`<div class="hint warn"><span>${esc(envMsg(env))}</span>${scanExtraBtn(env==="no-key"?"keys":"copy")}</div>`;
+    else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.</span>`;
   }
   img.hidden=!shotUrl;if(shotUrl&&img.getAttribute("src")!==shotUrl)img.src=shotUrl;
 }
@@ -815,7 +815,7 @@ document.addEventListener("click",async ev=>{
     case "scan-pick":$("pickFile").click();break;
     case "scan-stop":if(scanCtl)scanCtl.abort();break;
     case "shot":t.classList.toggle("big");break;
-    case "copy-link":try{await navigator.clipboard.writeText(ARTIFACT_URL);toast("Đã chép link. Dán vào Chrome hoặc Safari.")}catch(e){setScan("warn","Chép link này rồi mở bằng Chrome/Safari: "+ARTIFACT_URL)}break;
+    case "copy-link":try{await navigator.clipboard.writeText(ARTIFACT_URL);toast("Đã chép link. Mở Chrome/Safari và dán vào thanh địa chỉ.")}catch(e){setScan("warn","Chép link này rồi mở bằng Chrome/Safari: "+ARTIFACT_URL)}break;
     case "key-ai-save":{const v=$("apiKeyIn").value.trim();if(!/^sk-ant-/.test(v)){toast("API key phải bắt đầu bằng sk-ant-");break}LS.set("cb.apikey",v);toast("Đã lưu API key trên máy này.");renderKeys();break}
     case "key-ai-del":try{localStorage.removeItem("cb.apikey")}catch(e){}toast("Đã xoá API key khỏi máy này.");renderKeys();break;
     case "clear":resetDraft();break;
