@@ -18,6 +18,7 @@ Cấu trúc phiếu theo mẫu của tổ Lý – Hoá – Sinh – Tin:
 - **Chấm bằng camera:** bấm *Chụp phiếu*, Claude đọc chữ viết tay (họ tên, lớp, mã đề, Phần I–III) rồi điền sẵn; ô đọc chưa chắc có viền vàng nét đứt để giáo viên soát lại, Phần IV chấm tay.
   - Mở trong Claude: dùng luôn tài khoản Claude, không cần cài đặt.
   - Bản GitHub Pages: cần API key Anthropic riêng (tab *Đáp án* → *Đọc phiếu bằng camera*), key chỉ lưu trên trình duyệt của máy đang dùng.
+- **Chấm từ file PDF:** chọn file scan bài làm cả lớp (mỗi trang một phiếu), bấm *Đọc tất cả* để Claude đọc lần lượt, rồi soát và lưu từng trang; lưu xong tự sang trang kế tiếp. Bảng điểm có cột *Trang PDF*. Kết quả đọc được nhớ lại, mở lại cùng file không phải đọc lại.
 - Nhập bài làm bằng bàn phím trên màn hình (A–D cho Phần I, bàn phím số cho Phần III), tự nhảy câu.
 - Tính điểm ngay, có điểm bằng chữ; tô đỏ ô sai và hiện đáp án đúng.
 - Gợi ý mã đề khi học sinh ghi sai mã (so khớp Phần I với các mã đề khác).

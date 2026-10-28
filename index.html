@@ -102,7 +102,29 @@ section{display:flex;flex-direction:column;gap:14px}
 .cell.uns::after{content:"?";position:absolute;top:2px;left:5px;font-size:11px;font-weight:700;color:var(--warn)}
 
 /* scan */
-.scan-btns{display:grid;grid-template-columns:1fr auto;gap:10px}
+.scan-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.scan-btns .btn:first-child{grid-column:1/-1}
+.pagelist summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--pen);padding:4px 0;list-style-position:inside}
+.pagelist[open] summary{margin-bottom:8px}
+.batch{display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--line);padding-top:12px}
+.batch-head{display:flex;gap:10px;align-items:center}
+.batch-head .sp{flex:1;min-width:0;display:flex;flex-direction:column}
+.batch-head b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batch-head small{color:var(--ink2);font-size:12px}
+.batch .btn{min-height:40px;font-size:13.5px}
+.batch-head .btn{min-height:36px;padding:0 12px}
+.pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}
+.pg{min-height:40px;border-radius:7px;border:1.5px solid var(--line);background:var(--paper);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
+.pg.st-reading{border-color:var(--pen);color:var(--pen);border-style:dashed}
+.pg.st-read{border-color:var(--pen);color:var(--pen);background:var(--pen-soft)}
+.pg.st-check{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.pg.st-saved{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.pg.st-error{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+.pg.cur{box-shadow:0 0 0 2px var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;border:1.5px solid var(--line)}
+.legend .l-read{border-color:var(--pen);background:var(--pen-soft)} .legend .l-check{border-color:var(--warn);background:var(--warn-soft)}
+.legend .l-saved{border-color:var(--ok);background:var(--ok-soft)} .legend .l-error{border-color:var(--bad);background:var(--bad-soft)}
 .scan-btns .btn{white-space:nowrap}
 .btn svg{width:20px;height:20px;flex:none}
 .scan-status{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--pen);background:var(--pen-soft);border-radius:8px;padding:8px 8px 8px 12px}
@@ -225,10 +247,13 @@ main.kp-open~#toast{bottom:calc(300px + env(safe-area-inset-bottom,0px))}
       <div class="scan-btns">
         <button class="btn primary" data-act="scan-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Chụp phiếu</button>
         <button class="btn" data-act="scan-pick">Chọn ảnh</button>
+        <button class="btn" data-act="scan-pdf">Chấm từ file PDF</button>
       </div>
       <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
       <input type="file" id="pickFile" accept="image/*" hidden>
+      <input type="file" id="pdfFile" accept="application/pdf,.pdf" hidden>
       <div id="scanStatus"></div>
+      <div id="batchBox"></div>
       <img id="shot" class="shot" alt="Ảnh phiếu vừa chụp, chạm để phóng to" data-act="shot" hidden>
     </div>
     <div class="card">
@@ -277,7 +302,9 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 let keys=[], results=[];
 let mode="loading"; // loading | db | local
 let db=null, downloads=null;
-const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null,unsure:[]});
+const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null,unsure:[],src:null});
+let batch=null; // file PDF đang chấm: {id,name,doc,n,pages:[{status,o,url,full,crop,err,savedId}],cur,ctl,running,msg}
+const PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
 let sampleFn=null, sampleImgMax=0, scanCtl=null, shotUrl=null;
 let scanState={busy:false,kind:"",msg:"",extra:""};
 const SDK_URL="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm";
@@ -441,16 +468,158 @@ function setScan(kind,msg,extra){scanState={busy:false,kind,msg,extra:extra||""}
 function scanExtraBtn(x){const copy='<button class="btn" data-act="copy-link">Sao chép link</button>';return x==="keys"?copy+'<button class="btn" data-act="tab" data-tab="keys">Nhập API key</button>':x==="copy"?copy:""}
 function renderScan(){
   const st=$("scanStatus"),img=$("shot"),busy=scanState.busy;
-  document.querySelectorAll('[data-act="scan-cam"],[data-act="scan-pick"]').forEach(b=>b.disabled=busy);
-  if(busy)st.innerHTML=`<div class="scan-status"><span class="spin" aria-hidden="true"></span><span class="sp">${esc(scanState.msg)}</span><button class="btn" data-act="scan-stop">Dừng</button></div>`;
+  document.querySelectorAll('[data-act="scan-cam"],[data-act="scan-pick"],[data-act="scan-pdf"]').forEach(b=>b.disabled=busy);
+  if(busy)st.innerHTML=`<div class="scan-status"><span class="spin" aria-hidden="true"></span><span class="sp">${esc(scanState.msg)}</span>${scanCtl?'<button class="btn" data-act="scan-stop">Dừng</button>':""}</div>`;
   else if(scanState.msg)st.innerHTML=`<div class="hint ${scanState.kind==="ok"?"info":"warn"}"><span>${esc(scanState.msg)}</span>${scanExtraBtn(scanState.extra)}</div>`;
   else{
     const env=scanEnv();
     if(env==="no-runtime"||env==="no-images"||env==="no-sample"||env==="no-key")st.innerHTML=`<div class="hint warn"><span>${esc(envMsg(env))}</span>${scanExtraBtn(env==="no-key"?"keys":"copy")}</div>`;
     else st.innerHTML=`<span class="muted">Đặt phiếu thẳng, đủ sáng, chụp rõ từ tiêu đề đến hết Phần III. Claude đọc chữ viết tay rồi điền sẵn; ô viền vàng nét đứt là ô cần soát lại. Phần IV chấm tay.</span>`;
   }
-  img.hidden=!shotUrl;if(shotUrl&&img.getAttribute("src")!==shotUrl)img.src=shotUrl;
+  const url=shotUrl||(batch&&batch.cur!=null&&batch.pages[batch.cur].url)||"";
+  img.hidden=!url;if(url&&img.getAttribute("src")!==url)img.src=url;
+  renderBatch();
 }
+function readImages(eng,imgs,signal){
+  if(eng==="claude"){if(imgs.length>sampleImgMax)imgs=imgs.slice(0,sampleImgMax);return sampleFn.json(scanPrompt(imgs.length),{images:imgs,signal})}
+  return apiScan(imgs,signal);
+}
+
+/* ---------- chấm từ file PDF ---------- */
+let pdfjsReady=null;
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("Không tải được "+src));document.head.appendChild(s)})}
+function loadPdfJs(){
+  // Nạp worker như script thường để pdf.js chạy ngay trên trang (Claude không cho tạo Worker từ CDN)
+  if(!pdfjsReady)pdfjsReady=(async()=>{await loadScript(PDFJS+"pdf.worker.min.js");await loadScript(PDFJS+"pdf.min.js");return window.pdfjsLib})().catch(e=>{pdfjsReady=null;throw e});
+  return pdfjsReady;
+}
+function saveBatchCache(){if(batch)LS.set("cb.pdfcache",{id:batch.id,pages:batch.pages.map(p=>p.status==="read"||p.status==="saved"?{status:p.status,o:p.o,savedId:p.savedId||null}:null)})}
+async function openPdf(file){
+  if(batch&&batch.running){toast("Đang đọc file khác, bấm Dừng đọc trước.");return}
+  scanState={busy:true,kind:"",msg:"Đang mở file PDF…",extra:""};renderScan();
+  try{
+    const lib=await loadPdfJs();
+    const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    closeBatch();
+    const id=file.name+"|"+file.size+"|"+doc.numPages,cache=LS.get("cb.pdfcache",null);
+    batch={id,name:file.name,doc,n:doc.numPages,pages:Array.from({length:doc.numPages},()=>({status:"new"})),cur:null,ctl:null,running:false,msg:""};
+    if(cache&&cache.id===id&&Array.isArray(cache.pages))cache.pages.forEach((p,i)=>{if(p&&batch.pages[i])Object.assign(batch.pages[i],{status:p.status,o:p.o,savedId:p.savedId})});
+    scanState={busy:false,kind:"",msg:"",extra:""};renderScan();
+  }catch(e){scanState.busy=false;setScan("warn",e&&e.name==="PasswordException"?"File PDF có mật khẩu, hãy bỏ mật khẩu rồi chọn lại.":"Không mở được file PDF này. Kiểm tra mạng và file rồi thử lại.")}
+}
+function closeBatch(){
+  if(!batch)return;
+  if(batch.ctl)batch.ctl.abort();
+  batch.pages.forEach(p=>{if(p.url)URL.revokeObjectURL(p.url)});
+  try{batch.doc.destroy()}catch(e){}
+  batch=null;
+}
+function pageImgs(b,i){
+  const p=b.pages[i];if(p.full)return Promise.resolve(p.crop?[p.full,p.crop]:[p.full]);
+  // một trang chỉ dựng ảnh một lần dù được gọi cùng lúc (đọc, mở, dựng sẵn)
+  if(!p.imgP)p.imgP=renderPage(b,i).finally(()=>{p.imgP=null});
+  return p.imgP;
+}
+async function renderPage(b,i){
+  const p=b.pages[i];
+  const page=await b.doc.getPage(i+1),v1=page.getViewport({scale:1});
+  const vp=page.getViewport({scale:Math.min(4,2400/Math.max(v1.width,v1.height))});
+  const c=document.createElement("canvas");c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);
+  const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+  await page.render({canvasContext:ctx,viewport:vp}).promise;page.cleanup();
+  const W=c.width,H=c.height;
+  p.full=await toJpeg(c,0,0,W,H,2000);p.crop=H>W*1.15?await toJpeg(c,0,0,W,Math.round(H*0.56),1800):null;
+  c.width=c.height=0;
+  p.url=URL.createObjectURL(p.full);
+  return p.crop?[p.full,p.crop]:[p.full];
+}
+async function readPage(b,i,signal){
+  const p=b.pages[i],eng=scanEngine();
+  if(!eng)throw{code:"no_engine"};
+  p.status="reading";p.err="";renderBatch();
+  try{
+    const o=await readImages(eng,await pageImgs(b,i),signal);
+    if(!o||typeof o!=="object")throw{code:"invalid_json"};
+    p.o=o;p.status="read";p.crop=null;
+  }catch(e){p.status=e&&e.code==="cancelled"?"new":"error";p.err=scanErr(e);throw e}
+  finally{if(b===batch){saveBatchCache();renderBatch()}}
+}
+function formEmpty(){return !draft.id&&!draft.name.trim()&&draft.p1.every(v=>!v)}
+async function readAll(){
+  if(!batch||batch.running)return;
+  if(!scanEngine()){const env=scanEnv();setScan("warn",envMsg(env),env==="no-key"?"keys":"copy");return}
+  const b=batch;b.running=true;b.ctl=new AbortController();b.msg="";renderBatch();
+  const todo=b.pages.map((p,i)=>i).filter(i=>b.pages[i].status==="new"||b.pages[i].status==="error");
+  let stop=false;
+  const worker=async()=>{
+    while(!stop&&todo.length&&b===batch){
+      const i=todo.shift();
+      try{await readPage(b,i,b.ctl.signal);if(b===batch&&b.cur==null&&formEmpty())openPage(i)}
+      catch(e){const c=e&&e.code;if(["cancelled","rate_limited","not_granted","bad_key","session_expired","no_engine","sampling_disabled"].includes(c)){stop=true;if(c!=="cancelled")b.msg=scanErr(e)}}
+    }
+  };
+  await Promise.all([worker(),worker()]);
+  b.running=false;b.ctl=null;if(b===batch)renderBatch();
+}
+async function openPage(i){
+  const b=batch;if(!b)return;const p=b.pages[i];
+  if(p.status==="reading"){toast(`Trang ${i+1} đang được đọc…`);return}
+  if(p.status==="saved"&&!(p.savedId&&results.some(r=>r.id===p.savedId)))p.status=p.o?"read":"new"; // bài đã lưu bị xoá
+  if(p.status==="saved"){
+    openResult(p.savedId);draft.src={pdf:b.name,page:i+1};b.cur=i;
+    if(!p.url){try{await pageImgs(b,i)}catch(e){}}
+    setScan("ok",`Trang ${i+1}/${b.n}: bài đã lưu, đang mở để sửa.`);return;
+  }
+  if(p.status!=="read"){
+    if(!scanEngine()){const env=scanEnv();setScan("warn",envMsg(env),env==="no-key"?"keys":"copy");return}
+    b.cur=i;scanCtl=new AbortController();
+    scanState={busy:true,kind:"",msg:`Claude đang đọc trang ${i+1}…`,extra:""};renderScan();
+    try{await readPage(b,i,scanCtl.signal)}
+    catch(e){scanState.busy=false;if(e&&e.code==="cancelled")setScan("","");else setScan("warn",`Trang ${i+1}: `+scanErr(e));return}
+    finally{scanCtl=null;scanState.busy=false}
+    if(b!==batch)return;
+  }
+  if(!p.url){
+    scanState={busy:true,kind:"",msg:`Đang mở trang ${i+1}…`,extra:""};renderScan();
+    try{await pageImgs(b,i)}catch(e){}
+    scanState.busy=false;if(b!==batch)return;
+  }
+  draft=Object.assign(blankDraft(),{cls:draft.cls});
+  b.cur=i;b.listOpen=null;
+  // dựng sẵn ảnh trang kế tiếp để chuyển trang nhanh
+  const nx=b.pages.findIndex((q,j)=>j>i&&q.status==="read"&&!q.full);
+  if(nx>=0)pageImgs(b,nx).catch(()=>{});
+  const msg=applyScan(p.o);
+  draft.src={pdf:b.name,page:i+1};LS.set("cb.draft",draft);saveLabel();
+  setScan("ok",`Trang ${i+1}/${b.n}. `+msg);
+}
+function nextPageAfterSave(){
+  const b=batch;if(!b)return;
+  const order=b.pages.map((p,i)=>i);const start=b.cur==null?0:b.cur+1;
+  const nxt=[...order.slice(start),...order.slice(0,start)].find(i=>b.pages[i].status==="read");
+  b.cur=null;
+  if(nxt!=null){openPage(nxt);return}
+  const left=b.pages.filter(p=>p.status!=="saved").length;
+  setScan("ok",left?(b.running?"Đã lưu. Đang chờ Claude đọc các trang còn lại…":`Đã lưu. Còn ${left} trang chưa đọc hoặc bị lỗi, bấm Đọc để tiếp tục.`):`Đã chấm xong cả ${b.n} trang của file.`);
+}
+function renderBatch(){
+  const box=$("batchBox");if(!box)return;
+  if(!batch){box.innerHTML="";return}
+  const b=batch,c={read:0,check:0,saved:0,error:0,reading:0,new:0};
+  b.pages.forEach(p=>{const s=pageState(p);c[s]++});
+  const done=c.read+c.check+c.saved,left=c.new+c.error;
+  box.innerHTML=`<div class="batch">
+    <div class="batch-head"><div class="sp"><b>${esc(b.name)}</b><small>${b.n} trang · đã đọc ${done} · cần soát ${c.check} · đã lưu ${c.saved}${c.error?" · lỗi "+c.error:""}</small></div><button class="btn" data-act="pdf-close">Đóng file</button></div>
+    <div class="bar"><i style="width:${b.n?done/b.n*100:0}%"></i></div>
+    ${b.msg?`<div class="hint warn"><span>${esc(b.msg)}</span></div>`:""}
+    ${b.running?`<button class="btn" data-act="pdf-stop"><span class="spin" aria-hidden="true"></span>Đang đọc… bấm để dừng</button>`:left?`<button class="btn primary" data-act="pdf-readall">Đọc ${left} trang ${done?"còn lại":""}</button>`:""}
+    <details class="pagelist" ${(b.listOpen??b.cur==null)?"open":""}><summary>Danh sách ${b.n} trang${b.cur!=null?` · đang soát trang ${b.cur+1}`:""}</summary>
+    <div class="pages">${b.pages.map((p,i)=>`<button class="pg st-${pageState(p)} ${b.cur===i?"cur":""}" data-act="pdf-page" data-i="${i}" title="${esc(p.err||"")}" aria-label="Trang ${i+1}">${i+1}</button>`).join("")}</div>
+    <div class="legend" style="margin-top:8px"><span><i></i>Chưa đọc</span><span><i class="l-read"></i>Đã đọc</span><span><i class="l-check"></i>Cần soát</span><span><i class="l-saved"></i>Đã lưu</span><span><i class="l-error"></i>Lỗi</span></div>
+    </details>
+  </div>`;
+}
+function pageState(p){if(p.status==="read")return p.o&&Array.isArray(p.o.unsure)&&p.o.unsure.length?"check":"read";return p.status}
 async function startScan(file){
   if(scanState.busy)return;
   const eng=scanEngine();
@@ -464,11 +633,12 @@ async function startScan(file){
   try{imgs=await prepImages(file)}catch(e){setScan("warn","Không mở được ảnh này. Hãy chụp lại bằng nút Chụp phiếu.");return}
   if(shotUrl)URL.revokeObjectURL(shotUrl);
   shotUrl=URL.createObjectURL(imgs[0]);
-  if(eng==="claude"&&imgs.length>sampleImgMax)imgs=imgs.slice(0,sampleImgMax);
+  if(batch)batch.cur=null;
+  draft.src=null;
   scanCtl=new AbortController();
   scanState={busy:true,kind:"",msg:"Claude đang đọc phiếu… thường mất 10–40 giây.",extra:""};renderScan();
   try{
-    const o=eng==="claude"?await sampleFn.json(scanPrompt(imgs.length),{images:imgs,signal:scanCtl.signal}):await apiScan(imgs,scanCtl.signal);
+    const o=await readImages(eng,imgs,scanCtl.signal);
     scanState.busy=false;setScan("ok",applyScan(o));
   }catch(e){
     scanState.busy=false;
@@ -584,9 +754,10 @@ function renderEditBar(){
     :`<div class="editbar"><span class="sp">Đang sửa bài đã lưu</span><button class="btn danger" data-act="del-ask">Xoá</button><button class="btn" data-act="clear">Huỷ sửa</button></div>`;
   $("btnSave").textContent="Lưu thay đổi";
 }
+function saveLabel(){if(!draft.id)$("btnSave").textContent=draft.src&&batch&&batch.name===draft.src.pdf?`Lưu trang ${draft.src.page} · sang trang sau`:"Lưu bài"}
 function renderGrade(){
   renderExamSel();renderCodes();renderHint();renderP1();renderP2();renderP3();renderP4();renderEditBar();
-  if(!draft.id)$("btnSave").textContent="Lưu bài";
+  saveLabel();
   if(document.activeElement!==$("cls"))$("cls").value=draft.cls;
   if(document.activeElement!==$("name"))$("name").value=draft.name;
   if(document.activeElement!==$("note"))$("note").value=draft.note;
@@ -657,7 +828,7 @@ function renderList(){
   h+=`<div class="stats"><div class="stat"><span>Số bài</span><b>${rs.length}</b></div><div class="stat"><span>Trung bình</span><b>${avg.toFixed(2).replace(".",",")}</b></div><div class="stat"><span>Cao nhất</span><b>${f1(Math.max(...sc))}</b></div><div class="stat"><span>Thấp nhất</span><b>${f1(Math.min(...sc))}</b></div></div>
    <div class="card"><div class="eyebrow">Phổ điểm</div><div class="dist">${bins.map(b=>{const n=sc.filter(b[1]).length;return `<div class="dist-row"><span>${b[0]}</span><div class="bar"><i style="width:${n/mx*100}%"></i></div><b>${n}</b></div>`}).join("")}</div></div>
    <div class="tools"><button class="btn primary" data-act="export">Tải file Excel</button><button class="btn" data-act="copy">Sao chép bảng</button></div>
-   <div class="rows">${rs.map((r,i)=>{const s=resScore(r);return `<button class="r" data-act="open" data-id="${esc(r.id)}"><span class="n">${i+1}</span><span class="nm"><div>${esc(r.name)}</div><small>${esc(r.cls)}${r.note?" · "+esc(r.note):""}</small></span><span class="cd">${esc(r.code)}</span><span class="sc">${s?f1(s.total):"?"}</span></button>`}).join("")}</div>`;
+   <div class="rows">${rs.map((r,i)=>{const s=resScore(r);return `<button class="r" data-act="open" data-id="${esc(r.id)}"><span class="n">${i+1}</span><span class="nm"><div>${esc(r.name)}</div><small>${esc(r.cls)}${r.pdfPage?" · tr. "+esc(r.pdfPage):""}${r.note?" · "+esc(r.note):""}</small></span><span class="cd">${esc(r.code)}</span><span class="sc">${s?f1(s.total):"?"}</span></button>`}).join("")}</div>`;
   $("tab-list").innerHTML=h;
 }
 
@@ -683,9 +854,9 @@ async function importBackup(file){
 /* ---------- export ---------- */
 function tableRows(rs){
   return rs.map((r,i)=>{const s=resScore(r)||{c1:0,s1:0,c2:[0,0],s2:0,c3:0,s3:0,s4:0,raw:0,total:0};
-    return [i+1,r.name,r.cls,r.code,s.c1,s.s1,s.c2[0],s.c2[1],s.s2,s.c3,s.s3,+r.p4[0]||0,+r.p4[1]||0,+r.p4[2]||0,s.s4,s.raw,s.total,r.note||""]});
+    return [i+1,r.pdfPage||"",r.name,r.cls,r.code,s.c1,s.s1,s.c2[0],s.c2[1],s.s2,s.c3,s.s3,+r.p4[0]||0,+r.p4[1]||0,+r.p4[2]||0,s.s4,s.raw,s.total,r.note||""]});
 }
-const HEAD=["STT","Họ và tên","Lớp","Mã đề","P.I số câu đúng","Điểm P.I","Câu 13 số ý đúng","Câu 14 số ý đúng","Điểm P.II","P.III số câu đúng","Điểm P.III","Câu 23","Câu 24","Câu 25","Điểm P.IV","Tổng (chưa làm tròn)","ĐIỂM","Ghi chú"];
+const HEAD=["STT","Trang PDF","Họ và tên","Lớp","Mã đề","P.I số câu đúng","Điểm P.I","Câu 13 số ý đúng","Câu 14 số ý đúng","Điểm P.II","P.III số câu đúng","Điểm P.III","Câu 23","Câu 24","Câu 25","Điểm P.IV","Tổng (chưa làm tròn)","ĐIỂM","Ghi chú"];
 async function exportXlsx(){
   const rs=filteredResults();if(!rs.length)return;
   if(!window.XLSX){toast("Chưa tải được thư viện Excel. Dùng nút Sao chép bảng.");return}
@@ -693,8 +864,8 @@ async function exportXlsx(){
   const title=`BẢNG ĐIỂM KIỂM TRA ${ui.listExam.toUpperCase()} – HOÁ HỌC ${g} – ${ui.listCls?"LỚP "+ui.listCls:"TẤT CẢ LỚP"} – NĂM HỌC ${SCHOOL_YEAR}`;
   const note="Phần I, III: 0,25 đ/câu. Phần II: mỗi câu đúng 1/2/3/4 ý được 0,1/0,25/0,5/1,0 đ. ĐIỂM làm tròn 1 chữ số thập phân (TT 22/2021).";
   const ws=XLSX.utils.aoa_to_sheet([[title],[note],HEAD,...tableRows(rs)]);
-  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:17}},{s:{r:1,c:0},e:{r:1,c:17}}];
-  ws["!cols"]=[{wch:5},{wch:26},{wch:7},{wch:7},...Array(12).fill({wch:10}),{wch:8},{wch:30}];
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:18}},{s:{r:1,c:0},e:{r:1,c:18}}];
+  ws["!cols"]=[{wch:5},{wch:6},{wch:26},{wch:7},{wch:7},...Array(12).fill({wch:10}),{wch:8},{wch:30}];
   const det=[["STT","Họ và tên","Lớp","Mã đề",...Array.from({length:12},(_,i)=>"C"+(i+1)),..."abcd".split("").map(c=>"13"+c),..."abcd".split("").map(c=>"14"+c),...Array.from({length:8},(_,i)=>"C"+(15+i)),"C23","C24","C25"]];
   rs.forEach((r,i)=>det.push([i+1,r.name,r.cls,r.code,...r.p1,...r.p2[0].map(v=>v==="D"?"Đ":v),...r.p2[1].map(v=>v==="D"?"Đ":v),...r.p3,...r.p4.map(v=>v==null?"":v)]));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Bảng điểm");XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),"Chi tiết bài làm");
@@ -778,15 +949,22 @@ async function saveResult(){
   if(draft.unsure&&draft.unsure.length&&!ui.unsWarned){ui.unsWarned=true;toast(`Còn ${draft.unsure.length} ô viền vàng chưa soát. Bấm Lưu lần nữa để vẫn lưu.`);return}
   const s=score(k,draft);const now=Date.now();
   const r={id:draft.id||newId(),name:draft.name.trim().replace(/\s+/g," "),cls:draft.cls.trim().toUpperCase(),exam:k.exam,grade:k.grade,code:k.code,keyId:k.id,
-    p1:draft.p1.slice(),p2:draft.p2.map(x=>x.slice()),p3:draft.p3.slice(),p4:draft.p4.slice(),note:draft.note.trim(),sum:s,createdAt:draft.createdAt||now,updatedAt:now};
+    p1:draft.p1.slice(),p2:draft.p2.map(x=>x.slice()),p3:draft.p3.slice(),p4:draft.p4.slice(),note:draft.note.trim(),sum:s,createdAt:draft.createdAt||now,updatedAt:now,
+    pdfName:draft.src?draft.src.pdf:null,pdfPage:draft.src?draft.src.page:null};
   const btn=$("btnSave");btn.disabled=true;
-  try{await writeResult(r);toast(`Đã lưu: ${r.name} – ${f1(s.total)} điểm`);ui.listExam=r.exam;resetDraft()}
+  try{
+    await writeResult(r);toast(`Đã lưu: ${r.name} – ${f1(s.total)} điểm`);ui.listExam=r.exam;
+    const fromPdf=draft.src&&batch&&batch.name===draft.src.pdf?batch.pages[draft.src.page-1]:null;
+    if(fromPdf){fromPdf.status="saved";fromPdf.savedId=r.id;saveBatchCache()}
+    resetDraft();
+    if(fromPdf)nextPageAfterSave();
+  }
   catch(e){toast(errMsg(e))}
   finally{btn.disabled=false}
 }
 function openResult(id){
   const r=results.find(x=>x.id===id);if(!r)return;
-  draft={id:r.id,name:r.name,cls:r.cls,keyId:r.keyId,p1:r.p1.slice(),p2:r.p2.map(x=>x.slice()),p3:r.p3.slice(),p4:r.p4.slice(),note:r.note||"",createdAt:r.createdAt||null};
+  draft={id:r.id,name:r.name,cls:r.cls,keyId:r.keyId,p1:r.p1.slice(),p2:r.p2.map(x=>x.slice()),p3:r.p3.slice(),p4:r.p4.slice(),note:r.note||"",createdAt:r.createdAt||null,unsure:[],src:r.pdfPage?{pdf:r.pdfName,page:r.pdfPage}:null};
   ui.exam=r.exam;ui.delAsk=false;ui.act=null;switchTab("grade");window.scrollTo({top:0});
 }
 function switchTab(t){
@@ -813,12 +991,17 @@ document.addEventListener("click",async ev=>{
     case "save":saveResult();break;
     case "scan-cam":$("camFile").click();break;
     case "scan-pick":$("pickFile").click();break;
+    case "scan-pdf":$("pdfFile").click();break;
+    case "pdf-readall":readAll();break;
+    case "pdf-stop":if(batch&&batch.ctl)batch.ctl.abort();break;
+    case "pdf-page":openPage(+d.i);break;
+    case "pdf-close":closeBatch();if(draft.src)draft.src=null;setScan("","");break;
     case "scan-stop":if(scanCtl)scanCtl.abort();break;
     case "shot":t.classList.toggle("big");break;
     case "copy-link":try{await navigator.clipboard.writeText(ARTIFACT_URL);toast("Đã chép link. Mở Chrome/Safari và dán vào thanh địa chỉ.")}catch(e){setScan("warn","Chép link này rồi mở bằng Chrome/Safari: "+ARTIFACT_URL)}break;
     case "key-ai-save":{const v=$("apiKeyIn").value.trim();if(!/^sk-ant-/.test(v)){toast("API key phải bắt đầu bằng sk-ant-");break}LS.set("cb.apikey",v);toast("Đã lưu API key trên máy này.");renderKeys();break}
     case "key-ai-del":try{localStorage.removeItem("cb.apikey")}catch(e){}toast("Đã xoá API key khỏi máy này.");renderKeys();break;
-    case "clear":resetDraft();break;
+    case "clear":if(batch)batch.cur=null;resetDraft();break;
     case "open":openResult(d.id);break;
     case "del-ask":ui.delAsk=true;renderEditBar();break;
     case "del-no":ui.delAsk=false;renderEditBar();break;
@@ -853,7 +1036,9 @@ document.addEventListener("change",ev=>{
   else if(t.id==="lCls"){ui.listCls=t.value;saveUi();renderList()}
   else if(t.id==="importFile"&&t.files&&t.files[0]){importBackup(t.files[0]);t.value=""}
   else if((t.id==="camFile"||t.id==="pickFile")&&t.files&&t.files[0]){startScan(t.files[0]);t.value=""}
+  else if(t.id==="pdfFile"&&t.files&&t.files[0]){openPdf(t.files[0]);t.value=""}
 });
+document.addEventListener("toggle",ev=>{if(batch&&ev.target.classList&&ev.target.classList.contains("pagelist"))batch.listOpen=ev.target.open},true);
 document.addEventListener("focusin",ev=>{if(ev.target.matches("input,textarea,select")&&ui.act)setAct(null)});
 document.addEventListener("keydown",ev=>{
   if(!ui.act||ev.target.matches("input,textarea,select")||ev.ctrlKey||ev.metaKey||ev.altKey)return;
