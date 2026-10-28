@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d4f7c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px/1.4 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Chấm Phiếu Hoá</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Roboto+Slab:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: một cột kiểu "phiếu làm bài" trên nền giấy; thanh điểm dính trên, bàn phím chấm + thanh tab dính dưới */
+:root{
+  --paper:#eef2f1; --sheet:#ffffff; --ink:#18293a; --ink2:#5a6b7c; --line:#d3dce2;
+  --pen:#1d4f7c; --pen-ink:#ffffff; --pen-soft:#e1ecf6;
+  --ok:#2b7a35; --ok-soft:#e3f2e4; --bad:#c42b2b; --bad-soft:#fbe6e5; --warn:#975a00; --warn-soft:#fff1d6;
+  --f-ui:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-num:"Roboto Slab", Georgia, "Times New Roman", serif;
+  --f-cell:"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0e1418; --sheet:#162028; --ink:#e3eaef; --ink2:#97a8b6; --line:#2b3843;
+  --pen:#79b1e3; --pen-ink:#0a1620; --pen-soft:#1b3348;
+  --ok:#72c779; --ok-soft:#163021; --bad:#ff8080; --bad-soft:#3b1c1e; --warn:#f2b660; --warn-soft:#382a12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0e1418; --sheet:#162028; --ink:#e3eaef; --ink2:#97a8b6; --line:#2b3843;
+  --pen:#79b1e3; --pen-ink:#0a1620; --pen-soft:#1b3348;
+  --ok:#72c779; --ok-soft:#163021; --bad:#ff8080; --bad-soft:#3b1c1e; --warn:#f2b660; --warn-soft:#382a12; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--sheet)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* top bar */
+#top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--sheet);border-bottom:1px solid var(--line)}
+#top .wrap{display:flex;align-items:center;gap:12px;padding-block:10px;min-height:64px}
+.tb-title{flex:1;min-width:0}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:600}
+.tb-title h1{margin:0;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.score{display:flex;align-items:center;gap:10px}
+.score-num{font-family:var(--f-num);font-weight:700;font-size:34px;line-height:1;color:var(--bad);font-variant-numeric:tabular-nums;min-width:2.4ch;text-align:right}
+.score-num.none{color:var(--ink2);font-size:24px}
+.score-sub{font-size:11.5px;color:var(--ink2);line-height:1.3;text-align:right}
+.score-sub b{color:var(--ink);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 9px;border-radius:99px;background:var(--pen-soft);color:var(--pen);font-weight:600;white-space:nowrap}
+.pill.local{background:var(--warn-soft);color:var(--warn)}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+main{padding-block:14px 120px}
+main.kp-open{padding-bottom:300px}
+section{display:flex;flex-direction:column;gap:14px}
+
+.card{background:var(--sheet);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:12px}
+.part{background:var(--sheet);border:1px solid var(--line);border-radius:var(--r);padding:12px 12px 14px;display:flex;flex-direction:column;gap:10px}
+.part h2{margin:0;font-size:13px;font-weight:700;letter-spacing:.02em;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.part h2 small{font-weight:500;color:var(--ink2);font-size:12px}
+.part h2 .got{font-family:var(--f-num);color:var(--bad);font-size:14px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld>span{font-size:12px;color:var(--ink2);font-weight:600}
+.fld input,.fld select,.fld textarea{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 11px;min-height:44px}
+.fld textarea{resize:vertical;min-height:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--paper);font-family:var(--f-cell);font-weight:700;font-size:15px}
+.chip small{font-family:var(--f-ui);font-weight:500;color:var(--ink2);font-size:11px;margin-right:4px}
+.chip.on{background:var(--pen);border-color:var(--pen);color:var(--pen-ink)}
+.chip.on small{color:inherit;opacity:.8}
+.muted{color:var(--ink2);font-size:13px}
+.hint{border-radius:8px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hint.warn{background:var(--warn-soft);color:var(--warn)}
+.hint.info{background:var(--pen-soft);color:var(--pen)}
+.hint .btn{min-height:34px;padding:0 12px;font-size:13px}
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.switch input{width:18px;height:18px;accent-color:var(--pen)}
+
+/* answer cells */
+.grid{display:grid;gap:6px}
+.g6{grid-template-columns:repeat(6,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cell{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:58px;border:1.5px solid var(--line);border-radius:8px;background:var(--paper)}
+.cell i{font-style:normal;font-size:11px;color:var(--ink2);font-weight:600}
+.cell b{font-family:var(--f-cell);font-size:20px;line-height:1.1;min-height:22px}
+.g4 .cell b{font-size:17px}
+.cell em{position:absolute;top:2px;right:4px;font-style:normal;font-family:var(--f-cell);font-size:11px;font-weight:700;color:var(--ok)}
+.cell.ok{border-color:var(--ok);background:var(--ok-soft)}
+.cell.ok b{color:var(--ok)}
+.cell.bad{border-color:var(--bad);background:var(--bad-soft)}
+.cell.bad b{color:var(--bad);text-decoration:line-through;text-decoration-thickness:2px}
+.cell.act{border-color:var(--pen);box-shadow:0 0 0 2px var(--pen)}
+
+.tf-q{display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13.5px}
+.tf-q small{color:var(--ink2);font-weight:500;font-size:12px}
+.tf-q small b{font-family:var(--f-num);color:var(--bad)}
+.tf-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.tf{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.tf>span{font-size:12px;color:var(--ink2);text-align:center;font-weight:600}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{min-height:42px;font-weight:700;font-size:14px;background:var(--paper)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--pen);color:var(--pen-ink)}
+.seg.ok{border-color:var(--ok)} .seg.ok button.on{background:var(--ok);color:var(--sheet)}
+.seg.bad{border-color:var(--bad)} .seg.bad button.on{background:var(--bad);color:var(--sheet)}
+.p2box{display:flex;flex-direction:column;gap:8px}
+.p2box+.p2box{border-top:1px dashed var(--line);padding-top:10px}
+
+.p4row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.p4row>span{font-weight:600;font-size:13.5px;width:58px}
+.p4row .chips{gap:6px;flex:1}
+.p4row .chip{min-width:46px;padding:0 8px;font-size:14px}
+
+.actions{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+.btn{min-height:48px;border-radius:9px;padding:0 16px;font-weight:600;border:1px solid var(--line);background:var(--sheet);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.primary{background:var(--pen);border-color:var(--pen);color:var(--pen-ink)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.danger.solid{background:var(--bad);color:var(--sheet)}
+.btn:disabled{opacity:.5}
+.editbar{background:var(--warn-soft);color:var(--warn);border-radius:var(--r);padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+.editbar .sp{flex:1;min-width:140px}
+.editbar .btn{min-height:36px;font-size:13px;padding:0 12px}
+
+/* keypad */
+#keypad{position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:6;background:var(--sheet);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(0,0,0,.08)}
+#keypad .wrap{padding-block:8px 10px;display:flex;flex-direction:column;gap:6px}
+.kp-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--ink2)}
+.kp-head b{color:var(--ink)}
+.kp-head button{color:var(--pen);font-weight:600;padding:6px 4px}
+.kp{display:grid;gap:6px}
+.kp.k4{grid-template-columns:repeat(4,1fr)}
+.kp.k3{grid-template-columns:repeat(3,1fr)}
+.kp.k5{grid-template-columns:repeat(5,1fr)}
+.key{min-height:50px;border-radius:9px;background:var(--paper);border:1px solid var(--line);font-family:var(--f-cell);font-weight:700;font-size:20px}
+.key.big{min-height:58px;font-size:24px}
+.key.fn{font-family:var(--f-ui);font-size:14px;font-weight:600;color:var(--ink2)}
+.key:active{background:var(--pen-soft)}
+
+/* nav */
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--sheet);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+#nav .wrap{display:grid;grid-template-columns:repeat(3,1fr);height:60px}
+#nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;color:var(--ink2)}
+#nav button svg{width:22px;height:22px}
+#nav button.on{color:var(--pen)}
+
+/* list */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat{background:var(--sheet);border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:2px}
+.stat span{font-size:11px;color:var(--ink2);font-weight:600}
+.stat b{font-family:var(--f-num);font-size:22px;font-variant-numeric:tabular-nums}
+.dist{display:flex;flex-direction:column;gap:6px}
+.dist-row{display:grid;grid-template-columns:72px 1fr 34px;gap:8px;align-items:center;font-size:12.5px}
+.dist-row span:first-child{color:var(--ink2);font-variant-numeric:tabular-nums}
+.bar{height:12px;border-radius:4px;background:var(--paper);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pen);border-radius:4px}
+.dist-row b{text-align:right;font-variant-numeric:tabular-nums}
+.rows{background:var(--sheet);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.r{display:grid;grid-template-columns:28px 1fr auto auto;gap:10px;align-items:center;padding:11px 12px;width:100%;text-align:left;border-bottom:1px solid var(--line);min-height:54px}
+.r:last-child{border-bottom:0}
+.r .n{color:var(--ink2);font-size:12px;font-variant-numeric:tabular-nums}
+.r .nm{min-width:0}
+.r .nm div{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r .nm small{color:var(--ink2);font-size:12px}
+.r .cd{font-family:var(--f-cell);font-size:13px;color:var(--ink2)}
+.r .sc{font-family:var(--f-num);font-weight:700;font-size:19px;color:var(--bad);min-width:3ch;text-align:right;font-variant-numeric:tabular-nums}
+.empty{background:var(--sheet);border:1px dashed var(--line);border-radius:var(--r);padding:22px 16px;text-align:center;color:var(--ink2);display:flex;flex-direction:column;gap:6px;align-items:center}
+.empty b{color:var(--ink);font-size:15px}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* keys */
+.kgroup h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.kcard{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;width:100%;text-align:left;padding:11px 12px;border-bottom:1px solid var(--line)}
+.kcard:last-child{border-bottom:0}
+.kcard .cd{font-family:var(--f-cell);font-weight:700;font-size:18px;color:var(--pen);grid-row:span 2}
+.kcard .ans{font-family:var(--f-cell);font-size:13px;letter-spacing:.12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.kcard small{color:var(--ink2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.p3in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.p3in label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--ink2);font-weight:600;text-align:center}
+.p3in input{width:100%;text-align:center;font-family:var(--f-cell);font-weight:700;background:var(--paper);border:1px solid var(--line);border-radius:8px;min-height:42px;padding:4px}
+.mono{font-family:var(--f-cell);letter-spacing:.18em;font-weight:700;text-transform:uppercase}
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg3 button{min-height:44px;font-weight:700;background:var(--paper)}
+.seg3 button+button{border-left:1px solid var(--line)}
+.seg3 button.on{background:var(--pen);color:var(--pen-ink)}
+.err{color:var(--bad);font-size:13px}
+
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:9;background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:9px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.2)}
+main.kp-open~#toast{bottom:calc(300px + env(safe-area-inset-bottom,0px))}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:380px){.cell{min-height:52px}.cell b{font-size:18px}.stats{grid-template-columns:repeat(2,1fr)}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<header id="top"><div class="wrap" id="topIn"></div></header>
+
+<main id="main"><div class="wrap">
+  <section id="tab-grade">
+    <div id="editBar"></div>
+    <div class="card">
+      <div class="row2">
+        <label class="fld"><span>Kì kiểm tra</span><select id="examSel"></select></label>
+        <label class="fld"><span>Lớp</span><input id="cls" autocomplete="off" autocapitalize="characters" placeholder="VD: 10A1"></label>
+      </div>
+      <label class="fld"><span>Họ và tên học sinh</span><input id="name" autocomplete="off" autocapitalize="words" placeholder="VD: Nguyễn Hoàng Kiều Trinh"></label>
+      <div class="fld"><span>Mã đề</span><div id="codes" class="chips"></div></div>
+      <div id="codeHint"></div>
+      <label class="switch"><input type="checkbox" id="check" checked> Tô màu đúng / sai theo đáp án</label>
+    </div>
+    <div class="part"><h2>PHẦN I. Nhiều phương án <small>12 câu · 0,25 đ/câu</small><span class="got" id="g1"></span></h2><div id="p1" class="grid g6"></div></div>
+    <div class="part"><h2>PHẦN II. Đúng – Sai <small>1/2/3/4 ý → 0,1/0,25/0,5/1 đ</small><span class="got" id="g2"></span></h2><div id="p2"></div></div>
+    <div class="part"><h2>PHẦN III. Trả lời ngắn <small>8 câu · 0,25 đ/câu</small><span class="got" id="g3"></span></h2><div id="p3" class="grid g4"></div></div>
+    <div class="part"><h2>PHẦN IV. Tự luận <small>3 câu · tối đa 1,0 đ/câu</small><span class="got" id="g4"></span></h2><div id="p4"></div></div>
+    <label class="fld"><span>Ghi chú (nét chữ khó đọc, mã đề ghi sai…)</span><textarea id="note" rows="2"></textarea></label>
+    <div class="actions"><button class="btn primary" data-act="save" id="btnSave">Lưu bài</button><button class="btn" data-act="clear">Phiếu mới</button></div>
+  </section>
+
+  <section id="tab-list" hidden></section>
+  <section id="tab-keys" hidden></section>
+</div></main>
+
+<div id="keypad" hidden><div class="wrap" id="kpIn"></div></div>
+
+<nav id="nav"><div class="wrap">
+  <button data-act="tab" data-tab="grade" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Chấm bài</button>
+  <button data-act="tab" data-tab="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>Bảng điểm</button>
+  <button data-act="tab" data-tab="keys"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>Đáp án</button>
+</div></nav>
+
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+"use strict";
+const N1=12, N3=8, P2PTS=[0,0.1,0.25,0.5,1], P4STEPS=[0,0.25,0.5,0.75,1];
+const SCHOOL_YEAR="2026–2027";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- state ---------- */
+let keys=[], results=[];
+let mode="loading"; // loading | db | local
+let db=null, downloads=null;
+const blankDraft=()=>({id:null,name:"",cls:"",keyId:"",p1:Array(N1).fill(""),p2:[[ "","","",""],["","","",""]],p3:Array(N3).fill(""),p4:[null,null,null],note:"",createdAt:null});
+let draft=Object.assign(blankDraft(),LS.get("cb.draft",{}));
+const ui=Object.assign({tab:"grade",exam:"",check:true,listExam:"",listCls:""},LS.get("cb.ui",{}));
+ui.act=null; ui.delAsk=false; ui.keyEdit=null; ui.keyDelAsk=false;
+
+/* ---------- helpers ---------- */
+function slug(s){return String(s).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[đĐ]/g,"d").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toLowerCase()||"x"}
+function gradeOf(cls){const m=String(cls).trim().match(/^(10|11|12)/);return m?m[1]:""}
+function f2(x){return (Math.round(x*100)/100).toString().replace(".",",")}
+function f1(x){return x.toFixed(1).replace(".",",")}
+function round1(x){return Math.round(x*10+1e-9)/10}
+const W=["không","một","hai","ba","bốn","năm","sáu","bảy","tám","chín"];
+function words(x){const t=Math.round(x*10),i=Math.floor(t/10),d=t%10;let s=i===10?"mười":W[i];if(d)s+=" phẩy "+W[d];return s.charAt(0).toUpperCase()+s.slice(1)}
+function normShort(s){return String(s??"").trim().replace(/\s+/g,"").replace(/%$/,"").replace(/\./g,",").toUpperCase()}
+function eqShort(a,b){const x=normShort(a),y=normShort(b);if(!x||!y)return false;const re=/^-?\d+(,\d+)?$/;if(re.test(x)&&re.test(y))return Math.abs(parseFloat(x.replace(",","."))-parseFloat(y.replace(",",".")))<1e-9;return x===y}
+function sortName(a,b){const la=a.name.trim().split(/\s+/).pop()||"",lb=b.name.trim().split(/\s+/).pop()||"";return la.localeCompare(lb,"vi")||a.name.localeCompare(b.name,"vi")}
+function keyById(id){return keys.find(k=>k.id===id)}
+function exams(){const s=new Set(keys.map(k=>k.exam));results.forEach(r=>s.add(r.exam));return [...s].filter(Boolean)}
+function newId(){return "r"+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+
+function score(key,sh){
+  if(!key)return null;
+  let c1=0;for(let i=0;i<N1;i++)if(sh.p1[i]&&sh.p1[i]===key.p1[i])c1++;
+  const c2=[0,1].map(q=>{let n=0;for(let j=0;j<4;j++)if(sh.p2[q][j]&&sh.p2[q][j]===key.p2[q][j])n++;return n});
+  let c3=0;for(let i=0;i<N3;i++)if(eqShort(sh.p3[i],key.p3[i]))c3++;
+  const s1=c1*0.25,s2=P2PTS[c2[0]]+P2PTS[c2[1]],s3=c3*0.25,s4=sh.p4.reduce((a,v)=>a+(+v||0),0);
+  const raw=Math.round((s1+s2+s3+s4)*100)/100;
+  return {c1,s1,c2,s2,c3,s3,s4,raw,total:round1(raw)};
+}
+function resScore(r){const k=keyById(r.keyId);return k?score(k,r):(r.sum||null)}
+
+/* ---------- storage ---------- */
+function persistLocal(){if(mode==="local"){LS.set("cb.keys",keys);LS.set("cb.results",results)}}
+async function writeKey(k){if(mode==="db"){await db.collection("keys").doc(k.id).set(k)}else{const i=keys.findIndex(x=>x.id===k.id);if(i>=0)keys[i]=k;else keys.push(k);persistLocal();renderAll()}}
+async function deleteKey(id){if(mode==="db"){await db.collection("keys").doc(id).delete()}else{keys=keys.filter(k=>k.id!==id);persistLocal();renderAll()}}
+async function writeResult(r){if(mode==="db"){await db.collection("results").doc(r.id).set(r)}else{const i=results.findIndex(x=>x.id===r.id);if(i>=0)results[i]=r;else results.push(r);persistLocal();renderAll()}}
+async function deleteResult(id){if(mode==="db"){await db.collection("results").doc(id).delete()}else{results=results.filter(r=>r.id!==id);persistLocal();renderAll()}}
+function errMsg(e){const c=e&&e.code;if(c==="quota_exceeded")return "Bộ nhớ đã đầy, hãy xoá bớt bài cũ.";if(c==="invalid_argument")return "Bạn chỉ có quyền xem, không lưu được.";return "Chưa lưu được, thử lại sau giây lát."}
+
+async function init(){
+  renderAll();
+  let d=null;
+  try{if(window.claude&&typeof window.claude.use==="function"){d=await window.claude.use("db");downloads=await window.claude.use("downloads")}}catch(e){d=null}
+  if(d){
+    db=d;mode="db";
+    db.collection("keys").onSnapshot(s=>{keys=s.docs.map(x=>Object.assign({id:x.id},x.data()));renderAll()},()=>toast("Mất kết nối dữ liệu đáp án."));
+    db.collection("results").onSnapshot(s=>{results=s.docs.map(x=>Object.assign({id:x.id},x.data()));renderAll()},()=>toast("Mất kết nối bảng điểm."));
+  }else{
+    mode="local";keys=LS.get("cb.keys",[]);results=LS.get("cb.results",[]);
+  }
+  renderAll();
+}
+
+/* ---------- toast ---------- */
+let tT;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tT);tT=setTimeout(()=>t.hidden=true,2600)}
+
+/* ---------- render: top ---------- */
+function renderTop(){
+  const st=mode==="db"?'<span class="pill">Đã đồng bộ</span>':mode==="local"?'<span class="pill local">Lưu trên máy này</span>':'<span class="pill">Đang tải…</span>';
+  if(ui.tab==="grade"){
+    const k=keyById(draft.keyId),sc=score(k,draft);
+    const who=draft.name?esc(draft.name):"Chưa nhập tên";
+    $("topIn").innerHTML=`<div class="tb-title"><div class="eyebrow">${k?esc(k.exam)+" · Mã "+esc(k.code):"Chưa chọn mã đề"}</div><h1>${who}</h1></div>
+      <div class="score"><div class="score-sub">${sc?`<b>${words(sc.total)}</b><br>I ${sc.c1}/12 · II ${f2(sc.s2)} · III ${sc.c3}/8 · IV ${f2(sc.s4)}`:"Chọn mã đề<br>để tính điểm"}</div><div class="score-num ${sc?"":"none"}">${sc?f1(sc.total):"—"}</div></div>`;
+  }else{
+    const t=ui.tab==="list"?"Bảng điểm":"Đáp án các mã đề";
+    $("topIn").innerHTML=`<div class="tb-title"><div class="eyebrow">Hoá học · Năm học ${SCHOOL_YEAR}</div><h1>${t}</h1></div>${st}`;
+  }
+}
+
+/* ---------- render: grade tab ---------- */
+function renderExamSel(){
+  const ex=exams();if(!ui.exam||!ex.includes(ui.exam))ui.exam=(keyById(draft.keyId)||{}).exam||ex[0]||"";
+  $("examSel").innerHTML=ex.length?ex.map(e=>`<option ${e===ui.exam?"selected":""}>${esc(e)}</option>`).join(""):'<option value="">Chưa có đáp án</option>';
+}
+function candKeys(){const g=gradeOf(draft.cls);return keys.filter(k=>k.exam===ui.exam&&(!g||k.grade===g)).sort((a,b)=>a.grade.localeCompare(b.grade)||a.code.localeCompare(b.code))}
+function renderCodes(){
+  const c=candKeys(),g=gradeOf(draft.cls);
+  if(!keys.length){$("codes").innerHTML=`<span class="muted">${mode==="loading"?"Đang tải đáp án…":"Chưa có đáp án. Vào tab Đáp án để nhập."}</span>`;return}
+  if(!c.length){$("codes").innerHTML=`<span class="muted">Không có mã đề khối ${esc(g)} trong kì này.</span>`;return}
+  $("codes").innerHTML=c.map(k=>`<button class="chip ${k.id===draft.keyId?"on":""}" data-act="code" data-id="${esc(k.id)}">${g?"":`<small>K${esc(k.grade)}</small>`}${esc(k.code)}</button>`).join("");
+}
+function renderHint(){
+  const el=$("codeHint");const filled=draft.p1.filter(Boolean).length;const c=candKeys();
+  let h="";
+  if(filled>=6&&c.length>1){
+    const m=c.map(k=>({k,n:score(k,draft).c1})).sort((a,b)=>b.n-a.n);const best=m[0];const cur=m.find(x=>x.k.id===draft.keyId);
+    if(!cur&&best.n>=filled/2)h=`<div class="hint info"><span>Gợi ý: Phần I khớp mã <b>${esc(best.k.code)}</b> (${best.n}/${filled} câu đã nhập).</span><button class="btn" data-act="code" data-id="${esc(best.k.id)}">Chọn mã ${esc(best.k.code)}</button></div>`;
+    else if(cur&&best.k.id!==cur.k.id&&best.n-cur.n>=4)h=`<div class="hint warn"><span>Mã ${esc(cur.k.code)} chỉ khớp ${cur.n}/12, mã <b>${esc(best.k.code)}</b> khớp ${best.n}/12. Kiểm tra lại mã đề HS ghi.</span><button class="btn" data-act="code" data-id="${esc(best.k.id)}">Đổi sang ${esc(best.k.code)}</button></div>`;
+  }
+  if(!draft.id&&draft.name.trim()&&draft.cls.trim()){
+    const dup=results.find(r=>r.exam===ui.exam&&r.cls.toUpperCase()===draft.cls.trim().toUpperCase()&&r.name.trim().toLowerCase()===draft.name.trim().toLowerCase());
+    if(dup){const s=resScore(dup);h+=`<div class="hint warn"><span>Đã có bài của ${esc(dup.name)} (${s?f1(s.total):"?"} điểm).</span><button class="btn" data-act="open" data-id="${esc(dup.id)}">Mở bài đã lưu</button></div>`}
+  }
+  el.innerHTML=h;
+}
+function cellState(v,k){if(!ui.check||!k)return"";if(!v)return"";return v===k?"ok":"bad"}
+function renderP1(){
+  const k=keyById(draft.keyId);let h="";
+  for(let i=0;i<N1;i++){const v=draft.p1[i],kv=k?k.p1[i]:"",st=cellState(v,kv);const act=ui.act&&ui.act.p===1&&ui.act.i===i;
+    h+=`<button class="cell ${st} ${act?"act":""}" data-act="cell" data-p="1" data-i="${i}" aria-label="Câu ${i+1}"><i>${i+1}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
+  $("p1").innerHTML=h;
+  const sc=score(k,draft);$("g1").textContent=sc?f2(sc.s1)+" đ":"";
+}
+function renderP2(){
+  const k=keyById(draft.keyId),sc=score(k,draft);let h="";
+  [0,1].forEach(q=>{
+    h+=`<div class="p2box"><div class="tf-q">Câu ${13+q}<small>${sc?`${sc.c2[q]}/4 ý → <b>${f2(P2PTS[sc.c2[q]])} đ</b>`:""}</small></div><div class="tf-grid">`;
+    for(let j=0;j<4;j++){const v=draft.p2[q][j],kv=k?k.p2[q][j]:"";const st=cellState(v,kv);
+      h+=`<div class="tf"><span>${"abcd"[j]})</span><div class="seg ${st}"><button class="${v==="D"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="D" aria-label="Câu ${13+q} ý ${"abcd"[j]} Đúng">Đ</button><button class="${v==="S"?"on":""}" data-act="p2" data-q="${q}" data-j="${j}" data-v="S" aria-label="Câu ${13+q} ý ${"abcd"[j]} Sai">S</button></div></div>`}
+    h+=`</div></div>`;
+  });
+  $("p2").innerHTML=h;$("g2").textContent=sc?f2(sc.s2)+" đ":"";
+}
+function renderP3(){
+  const k=keyById(draft.keyId);let h="";
+  for(let i=0;i<N3;i++){const v=draft.p3[i],kv=k?k.p3[i]:"";const st=!ui.check||!k||!v?"":eqShort(v,kv)?"ok":"bad";const act=ui.act&&ui.act.p===3&&ui.act.i===i;
+    h+=`<button class="cell ${st} ${act?"act":""}" data-act="cell" data-p="3" data-i="${i}" aria-label="Câu ${15+i}"><i>${15+i}</i><b>${esc(v)||"&nbsp;"}</b>${st==="bad"?`<em>${esc(kv)}</em>`:""}</button>`}
+  $("p3").innerHTML=h;const sc=score(k,draft);$("g3").textContent=sc?f2(sc.s3)+" đ":"";
+}
+function renderP4(){
+  let h="";
+  for(let i=0;i<3;i++){h+=`<div class="p4row"><span>Câu ${23+i}</span><div class="chips">${P4STEPS.map(s=>`<button class="chip ${draft.p4[i]===s?"on":""}" data-act="p4" data-i="${i}" data-v="${s}">${f2(s)}</button>`).join("")}</div></div>`}
+  $("p4").innerHTML=h;const s4=draft.p4.reduce((a,v)=>a+(+v||0),0);$("g4").textContent=draft.p4.some(v=>v!==null)?f2(s4)+" đ":"";
+}
+function renderEditBar(){
+  const el=$("editBar");if(!draft.id){el.innerHTML="";return}
+  el.innerHTML=ui.delAsk?`<div class="editbar"><span class="sp">Xoá hẳn bài của <b>${esc(draft.name)}</b>?</span><button class="btn danger solid" data-act="del-yes">Xoá bài</button><button class="btn" data-act="del-no">Giữ lại</button></div>`
+    :`<div class="editbar"><span class="sp">Đang sửa bài đã lưu</span><button class="btn danger" data-act="del-ask">Xoá</button><button class="btn" data-act="clear">Huỷ sửa</button></div>`;
+  $("btnSave").textContent="Lưu thay đổi";
+}
+function renderGrade(){
+  renderExamSel();renderCodes();renderHint();renderP1();renderP2();renderP3();renderP4();renderEditBar();
+  if(!draft.id)$("btnSave").textContent="Lưu bài";
+  if(document.activeElement!==$("cls"))$("cls").value=draft.cls;
+  if(document.activeElement!==$("name"))$("name").value=draft.name;
+  if(document.activeElement!==$("note"))$("note").value=draft.note;
+  $("check").checked=ui.check;
+}
+
+/* ---------- keypad ---------- */
+function renderKeypad(){
+  const show=ui.tab==="grade"&&ui.act&&(ui.act.p===1||ui.act.p===3);
+  $("keypad").hidden=!show;$("main").classList.toggle("kp-open",!!show);
+  if(!show)return;
+  const {p,i}=ui.act;
+  const head=`<div class="kp-head"><span>Phần ${p===1?"I":"III"} · <b>Câu ${p===1?i+1:15+i}</b></span><button data-act="kp" data-k="hide">Ẩn bàn phím</button></div>`;
+  if(p===1){
+    $("kpIn").innerHTML=head+`<div class="kp k4">${"ABCD".split("").map(c=>`<button class="key big" data-act="kp" data-k="${c}">${c}</button>`).join("")}</div>
+      <div class="kp k3"><button class="key fn" data-act="kp" data-k="prev">‹ Câu trước</button><button class="key fn" data-act="kp" data-k="clr">Bỏ trống</button><button class="key fn" data-act="kp" data-k="next">Câu sau ›</button></div>`;
+  }else{
+    const ks=["1","2","3","4","5","6","7","8","9","0"];
+    $("kpIn").innerHTML=head+`<div class="kp k5">${ks.map(c=>`<button class="key" data-act="kp" data-k="${c}">${c}</button>`).join("")}
+      <button class="key" data-act="kp" data-k=",">,</button><button class="key" data-act="kp" data-k="-">−</button><button class="key fn" data-act="kp" data-k="bs" aria-label="Xoá kí tự">⌫</button><button class="key fn" data-act="kp" data-k="prev">‹</button><button class="key fn" data-act="kp" data-k="next">Tiếp ›</button></div>`;
+  }
+}
+function setAct(a,scroll){
+  ui.act=a;renderP1();renderP3();renderKeypad();
+  if(scroll&&a){const el=document.querySelector(`.cell[data-p="${a.p}"][data-i="${a.i}"]`);if(el)el.scrollIntoView({block:"center",behavior:"smooth"})}
+}
+function keypad(k){
+  const a=ui.act;if(!a)return;
+  if(k==="hide"){setAct(null);return}
+  if(a.p===1){
+    if("ABCD".includes(k)&&k.length===1){draft.p1[a.i]=k;changed();if(a.i<N1-1)setAct({p:1,i:a.i+1},true);else{setAct(null);document.querySelector("#p2").scrollIntoView({block:"start",behavior:"smooth"})}return}
+    if(k==="clr"){draft.p1[a.i]="";changed();return}
+    if(k==="prev"&&a.i>0)setAct({p:1,i:a.i-1},true);
+    if(k==="next"){if(a.i<N1-1)setAct({p:1,i:a.i+1},true);else setAct(null)}
+    return;
+  }
+  let v=draft.p3[a.i]||"";
+  if(/^\d$/.test(k)||k===","){if(v.length<6)v+=k}
+  else if(k==="-"){v=v.startsWith("-")?v.slice(1):"-"+v}
+  else if(k==="bs"){v=v.slice(0,-1)}
+  else if(k==="prev"){if(a.i>0)setAct({p:3,i:a.i-1},true);return}
+  else if(k==="next"){if(a.i<N3-1)setAct({p:3,i:a.i+1},true);else{setAct(null);document.querySelector("#p4").scrollIntoView({block:"start",behavior:"smooth"})}return}
+  draft.p3[a.i]=v;changed();
+}
+
+/* ---------- render: list tab ---------- */
+function filteredResults(){
+  return results.filter(r=>(!ui.listExam||r.exam===ui.listExam)&&(!ui.listCls||r.cls===ui.listCls)).sort(sortName);
+}
+function renderList(){
+  const ex=exams();if(ui.listExam&&!ex.includes(ui.listExam))ui.listExam="";
+  if(!ui.listExam&&ex.length)ui.listExam=ui.exam||ex[0];
+  const clsList=[...new Set(results.filter(r=>!ui.listExam||r.exam===ui.listExam).map(r=>r.cls))].sort((a,b)=>a.localeCompare(b,"vi",{numeric:true}));
+  if(ui.listCls&&!clsList.includes(ui.listCls))ui.listCls="";
+  const rs=filteredResults(),sc=rs.map(r=>resScore(r)).filter(Boolean).map(s=>s.total);
+  const avg=sc.length?sc.reduce((a,b)=>a+b,0)/sc.length:0;
+  const bins=[["Dưới 3,5",x=>x<3.5],["3,5 – dưới 5",x=>x>=3.5&&x<5],["5 – dưới 6,5",x=>x>=5&&x<6.5],["6,5 – dưới 8",x=>x>=6.5&&x<8],["Từ 8 trở lên",x=>x>=8]];
+  const mx=Math.max(1,...bins.map(b=>sc.filter(b[1]).length));
+  let h=`<div class="card"><div class="row2">
+      <label class="fld"><span>Kì kiểm tra</span><select id="lExam">${ex.map(e=>`<option ${e===ui.listExam?"selected":""}>${esc(e)}</option>`).join("")||'<option value="">—</option>'}</select></label>
+      <label class="fld"><span>Lớp</span><select id="lCls"><option value="">Tất cả lớp</option>${clsList.map(c=>`<option ${c===ui.listCls?"selected":""}>${esc(c)}</option>`).join("")}</select></label></div></div>`;
+  if(!rs.length){
+    h+=`<div class="empty"><b>Chưa có bài nào được chấm${ui.listCls?" ở lớp "+esc(ui.listCls):""}</b><span>Bài lưu ở tab Chấm bài sẽ hiện tại đây, xếp theo tên.</span><button class="btn primary" data-act="tab" data-tab="grade">Chấm bài đầu tiên</button></div>`;
+    $("tab-list").innerHTML=h;return;
+  }
+  h+=`<div class="stats"><div class="stat"><span>Số bài</span><b>${rs.length}</b></div><div class="stat"><span>Trung bình</span><b>${avg.toFixed(2).replace(".",",")}</b></div><div class="stat"><span>Cao nhất</span><b>${f1(Math.max(...sc))}</b></div><div class="stat"><span>Thấp nhất</span><b>${f1(Math.min(...sc))}</b></div></div>
+   <div class="card"><div class="eyebrow">Phổ điểm</div><div class="dist">${bins.map(b=>{const n=sc.filter(b[1]).length;return `<div class="dist-row"><span>${b[0]}</span><div class="bar"><i style="width:${n/mx*100}%"></i></div><b>${n}</b></div>`}).join("")}</div></div>
+   <div class="tools"><button class="btn primary" data-act="export">Tải file Excel</button><button class="btn" data-act="copy">Sao chép bảng</button></div>
+   <div class="rows">${rs.map((r,i)=>{const s=resScore(r);return `<button class="r" data-act="open" data-id="${esc(r.id)}"><span class="n">${i+1}</span><span class="nm"><div>${esc(r.name)}</div><small>${esc(r.cls)}${r.note?" · "+esc(r.note):""}</small></span><span class="cd">${esc(r.code)}</span><span class="sc">${s?f1(s.total):"?"}</span></button>`}).join("")}</div>`;
+  $("tab-list").innerHTML=h;
+}
+
+/* ---------- files ---------- */
+async function saveFile(filename,data,mime){
+  if(downloads){try{await downloads.save({filename,data});return true}catch(e){if(e&&e.code!=="declined")toast("Không tải được file ("+(e.code||"lỗi")+").");return false}}
+  if(window.claude){toast("Trang này không tải file được. Dùng nút Sao chép bảng.");return false}
+  const url=URL.createObjectURL(new Blob([data],{type:mime}));const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);return true;
+}
+async function exportBackup(){
+  const d=new Date(),stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+  const body=JSON.stringify({app:"cham-phieu-hoa",version:1,exportedAt:d.toISOString(),keys,results},null,1);
+  if(await saveFile(`SaoLuu_ChamPhieuHoa_${stamp}.json`,body,"application/json"))toast(`Đã sao lưu ${keys.length} mã đề, ${results.length} bài.`);
+}
+async function importBackup(file){
+  let o;try{o=JSON.parse(await file.text())}catch(e){toast("File không đọc được. Chọn file .json sao lưu từ ứng dụng này.");return}
+  const ks=Array.isArray(o.keys)?o.keys.filter(k=>k&&k.id&&Array.isArray(k.p1)&&Array.isArray(k.p2)&&Array.isArray(k.p3)):[];
+  const rs=Array.isArray(o.results)?o.results.filter(r=>r&&r.id&&r.name&&Array.isArray(r.p1)):[];
+  if(!ks.length&&!rs.length){toast("File không có mã đề hay bài chấm nào.");return}
+  try{for(const k of ks)await writeKey(k);for(const r of rs)await writeResult(r);toast(`Đã nhập ${ks.length} mã đề, ${rs.length} bài.`)}catch(e){toast(errMsg(e))}
+}
+
+/* ---------- export ---------- */
+function tableRows(rs){
+  return rs.map((r,i)=>{const s=resScore(r)||{c1:0,s1:0,c2:[0,0],s2:0,c3:0,s3:0,s4:0,raw:0,total:0};
+    return [i+1,r.name,r.cls,r.code,s.c1,s.s1,s.c2[0],s.c2[1],s.s2,s.c3,s.s3,+r.p4[0]||0,+r.p4[1]||0,+r.p4[2]||0,s.s4,s.raw,s.total,r.note||""]});
+}
+const HEAD=["STT","Họ và tên","Lớp","Mã đề","P.I số câu đúng","Điểm P.I","Câu 13 số ý đúng","Câu 14 số ý đúng","Điểm P.II","P.III số câu đúng","Điểm P.III","Câu 23","Câu 24","Câu 25","Điểm P.IV","Tổng (chưa làm tròn)","ĐIỂM","Ghi chú"];
+async function exportXlsx(){
+  const rs=filteredResults();if(!rs.length)return;
+  if(!window.XLSX){toast("Chưa tải được thư viện Excel. Dùng nút Sao chép bảng.");return}
+  const g=[...new Set(rs.map(r=>r.grade))].join("-");
+  const title=`BẢNG ĐIỂM KIỂM TRA ${ui.listExam.toUpperCase()} – HOÁ HỌC ${g} – ${ui.listCls?"LỚP "+ui.listCls:"TẤT CẢ LỚP"} – NĂM HỌC ${SCHOOL_YEAR}`;
+  const note="Phần I, III: 0,25 đ/câu. Phần II: mỗi câu đúng 1/2/3/4 ý được 0,1/0,25/0,5/1,0 đ. ĐIỂM làm tròn 1 chữ số thập phân (TT 22/2021).";
+  const ws=XLSX.utils.aoa_to_sheet([[title],[note],HEAD,...tableRows(rs)]);
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:17}},{s:{r:1,c:0},e:{r:1,c:17}}];
+  ws["!cols"]=[{wch:5},{wch:26},{wch:7},{wch:7},...Array(12).fill({wch:10}),{wch:8},{wch:30}];
+  const det=[["STT","Họ và tên","Lớp","Mã đề",...Array.from({length:12},(_,i)=>"C"+(i+1)),..."abcd".split("").map(c=>"13"+c),..."abcd".split("").map(c=>"14"+c),...Array.from({length:8},(_,i)=>"C"+(15+i)),"C23","C24","C25"]];
+  rs.forEach((r,i)=>det.push([i+1,r.name,r.cls,r.code,...r.p1,...r.p2[0].map(v=>v==="D"?"Đ":v),...r.p2[1].map(v=>v==="D"?"Đ":v),...r.p3,...r.p4.map(v=>v==null?"":v)]));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Bảng điểm");XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),"Chi tiết bài làm");
+  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  const fn=`BangDiem_${slug(ui.listExam).replace(/-/g,"")}_Hoa${g}_${ui.listCls||"TatCaLop"}.xlsx`;
+  if(await saveFile(fn,buf,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))toast("Đã tải "+fn);
+}
+async function copyTable(){
+  const rs=filteredResults();const tsv=[HEAD,...tableRows(rs)].map(r=>r.map(v=>typeof v==="number"?String(v).replace(".",","):String(v).replace(/\t|\n/g," ")).join("\t")).join("\n");
+  try{await navigator.clipboard.writeText(tsv);toast("Đã sao chép "+rs.length+" dòng. Dán vào Excel.")}
+  catch(e){const ta=document.createElement("textarea");ta.value=tsv;ta.className="vh";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("Đã sao chép. Dán vào Excel.")}catch(x){toast("Không sao chép được.")}ta.remove()}
+}
+
+/* ---------- render: keys tab ---------- */
+function renderKeys(){
+  const el=$("tab-keys");
+  if(ui.keyEdit){renderKeyEditor();return}
+  const local=mode==="local"?`<div class="hint warn">Dữ liệu chỉ lưu trong trình duyệt của máy này. Nhớ tải file sao lưu sau mỗi buổi chấm.</div>`:"";
+  const backup=`<div class="card"><div class="eyebrow">Sao lưu dữ liệu</div><span class="muted">Tải về một file .json chứa toàn bộ đáp án và bài đã chấm, hoặc nhập lại từ file đó (dùng để chuyển sang máy khác).</span>
+    <div class="tools"><button class="btn" data-act="backup">Tải file sao lưu</button><button class="btn" data-act="import">Nhập từ file</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></div>`;
+  if(!keys.length){el.innerHTML=local+`<div class="empty"><b>${mode==="loading"?"Đang tải đáp án…":"Chưa có đáp án nào"}</b><span>Nhập đáp án từng mã đề theo phiếu đáp án, hoặc nhập từ file sao lưu.</span><button class="btn primary" data-act="key-new">Thêm mã đề</button></div>`+backup;return}
+  const groups={};keys.forEach(k=>{const g=k.exam+"|"+k.grade;(groups[g]=groups[g]||[]).push(k)});
+  let h=local+`<button class="btn primary" data-act="key-new">+ Thêm mã đề</button>`;
+  Object.keys(groups).sort((a,b)=>a.localeCompare(b,"vi",{numeric:true})).forEach(g=>{const [ex,gr]=g.split("|");
+    h+=`<div class="kgroup"><h3>${esc(ex)} · Hoá ${esc(gr)}</h3><div class="rows">${groups[g].sort((a,b)=>a.code.localeCompare(b.code)).map(k=>`<button class="kcard" data-act="key-open" data-id="${esc(k.id)}"><span class="cd">${esc(k.code)}</span><span class="ans">${k.p1.join("")}</span><small>II: ${k.p2.map(r=>r.map(v=>v==="D"?"Đ":"S").join("")).join(" · ")} — III: ${k.p3.map(esc).join(" ; ")}</small></button>`).join("")}</div></div>`});
+  el.innerHTML=h+backup;
+}
+function renderKeyEditor(){
+  const e=ui.keyEdit;const ex=exams();
+  $("tab-keys").innerHTML=`<div class="card">
+    <div class="eyebrow">${e.id?"Sửa đáp án mã "+esc(e.code):"Thêm mã đề mới"}</div>
+    <label class="fld"><span>Kì kiểm tra</span><input id="kExam" list="kExamList" value="${esc(e.exam)}" placeholder="VD: Giữa kì I"><datalist id="kExamList">${ex.map(x=>`<option value="${esc(x)}">`).join("")}</datalist></label>
+    <div class="row2"><div class="fld"><span>Khối</span><div class="seg3">${["10","11","12"].map(g=>`<button class="${e.grade===g?"on":""}" data-act="key-grade" data-g="${g}">${g}</button>`).join("")}</div></div>
+      <label class="fld"><span>Mã đề</span><input id="kCode" inputmode="numeric" value="${esc(e.code)}" placeholder="VD: 201"></label></div>
+    <label class="fld"><span>Phần I – 12 chữ cái liền nhau (<span id="kP1n">${e.p1.filter(Boolean).length}</span>/12)</span><input id="kP1" class="mono" maxlength="12" autocapitalize="characters" autocomplete="off" value="${esc(e.p1.join(""))}" placeholder="CBADDDBACDCC"></label>
+    <div class="fld"><span>Phần II – Đúng / Sai</span><div id="kP2"></div></div>
+    <div class="fld"><span>Phần III – đáp án ngắn (dùng dấu phẩy)</span><div class="p3in">${e.p3.map((v,i)=>`<label>Câu ${15+i}<input data-k3="${i}" inputmode="decimal" autocomplete="off" value="${esc(v)}"></label>`).join("")}</div></div>
+    <div id="kErr" class="err"></div>
+    <div class="actions"><button class="btn primary" data-act="key-save">Lưu đáp án</button><button class="btn" data-act="key-cancel">Huỷ</button></div>
+    ${e.id?(ui.keyDelAsk?`<div class="editbar"><span class="sp">Xoá đáp án mã ${esc(e.code)}? Bài đã chấm vẫn giữ điểm đã lưu.</span><button class="btn danger solid" data-act="key-del-yes">Xoá</button><button class="btn" data-act="key-del-no">Giữ lại</button></div>`:`<button class="btn danger" data-act="key-del-ask">Xoá mã đề này</button>`):""}
+  </div>`;
+  renderKeyP2();
+}
+function renderKeyP2(){
+  const e=ui.keyEdit;$("kP2").innerHTML=[0,1].map(q=>`<div class="p2box"><div class="tf-q">Câu ${13+q}</div><div class="tf-grid">${[0,1,2,3].map(j=>`<div class="tf"><span>${"abcd"[j]})</span><div class="seg"><button class="${e.p2[q][j]==="D"?"on":""}" data-act="key-p2" data-q="${q}" data-j="${j}" data-v="D">Đ</button><button class="${e.p2[q][j]==="S"?"on":""}" data-act="key-p2" data-q="${q}" data-j="${j}" data-v="S">S</button></div></div>`).join("")}</div></div>`).join("");
+}
+function readKeyForm(){
+  const e=ui.keyEdit;e.exam=$("kExam").value.trim();e.code=$("kCode").value.trim();
+  const p1=$("kP1").value.toUpperCase().replace(/[^ABCD]/g,"");e.p1=Array.from({length:N1},(_,i)=>p1[i]||"");
+  document.querySelectorAll("[data-k3]").forEach(inp=>e.p3[+inp.dataset.k3]=inp.value.trim().replace(/\./g,","));
+}
+async function saveKey(){
+  readKeyForm();const e=ui.keyEdit;let err="";
+  if(!e.exam)err="Nhập tên kì kiểm tra.";else if(!e.grade)err="Chọn khối.";else if(!e.code)err="Nhập mã đề.";
+  else if(e.p1.some(v=>!v))err="Phần I cần đủ 12 chữ cái A–D.";else if(e.p2.some(r=>r.some(v=>!v)))err="Phần II cần chọn Đ/S cho đủ 8 ý.";else if(e.p3.some(v=>!v))err="Phần III cần đủ 8 đáp án.";
+  const id=e.id||slug(e.exam)+"-"+e.grade+"-"+slug(e.code);
+  if(!err&&keys.some(k=>k.id!==e.id&&k.exam===e.exam&&k.grade===e.grade&&k.code===e.code))err="Mã đề này đã có trong kì và khối đã chọn.";
+  if(err){$("kErr").textContent=err;return}
+  const k={id,exam:e.exam,grade:e.grade,code:e.code,p1:e.p1,p2:e.p2,p3:e.p3,updatedAt:Date.now()};
+  try{await writeKey(k);ui.keyEdit=null;ui.keyDelAsk=false;toast("Đã lưu đáp án mã "+k.code);renderKeys()}catch(x){$("kErr").textContent=errMsg(x)}
+}
+
+/* ---------- actions ---------- */
+let dT;function changed(){renderTop();renderHint();renderP1();renderP2();renderP3();renderP4();clearTimeout(dT);dT=setTimeout(()=>LS.set("cb.draft",draft),300)}
+function saveUi(){LS.set("cb.ui",{tab:ui.tab,exam:ui.exam,check:ui.check,listExam:ui.listExam,listCls:ui.listCls})}
+function resetDraft(){const keep={cls:draft.cls};draft=Object.assign(blankDraft(),keep);ui.delAsk=false;ui.act=null;LS.set("cb.draft",draft);renderAll();window.scrollTo({top:0,behavior:"smooth"})}
+async function saveResult(){
+  const k=keyById(draft.keyId);
+  if(!k){toast("Chọn mã đề trước khi lưu.");return}
+  if(!draft.name.trim()){toast("Nhập họ và tên học sinh.");$("name").focus();return}
+  if(!draft.cls.trim()){toast("Nhập lớp.");$("cls").focus();return}
+  const s=score(k,draft);const now=Date.now();
+  const r={id:draft.id||newId(),name:draft.name.trim().replace(/\s+/g," "),cls:draft.cls.trim().toUpperCase(),exam:k.exam,grade:k.grade,code:k.code,keyId:k.id,
+    p1:draft.p1.slice(),p2:draft.p2.map(x=>x.slice()),p3:draft.p3.slice(),p4:draft.p4.slice(),note:draft.note.trim(),sum:s,createdAt:draft.createdAt||now,updatedAt:now};
+  const btn=$("btnSave");btn.disabled=true;
+  try{await writeResult(r);toast(`Đã lưu: ${r.name} – ${f1(s.total)} điểm`);ui.listExam=r.exam;resetDraft()}
+  catch(e){toast(errMsg(e))}
+  finally{btn.disabled=false}
+}
+function openResult(id){
+  const r=results.find(x=>x.id===id);if(!r)return;
+  draft={id:r.id,name:r.name,cls:r.cls,keyId:r.keyId,p1:r.p1.slice(),p2:r.p2.map(x=>x.slice()),p3:r.p3.slice(),p4:r.p4.slice(),note:r.note||"",createdAt:r.createdAt||null};
+  ui.exam=r.exam;ui.delAsk=false;ui.act=null;switchTab("grade");window.scrollTo({top:0});
+}
+function switchTab(t){
+  ui.tab=t;if(t!=="grade")ui.act=null;
+  ["grade","list","keys"].forEach(x=>$("tab-"+x).hidden=x!==t);
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===t));
+  saveUi();renderAll();
+}
+function renderAll(){
+  renderTop();
+  if(ui.tab==="grade")renderGrade();else if(ui.tab==="list")renderList();else renderKeys();
+  renderKeypad();
+}
+
+document.addEventListener("click",async ev=>{
+  const t=ev.target.closest("[data-act]");if(!t)return;const a=t.dataset.act,d=t.dataset;
+  switch(a){
+    case "tab":switchTab(d.tab);window.scrollTo({top:0});break;
+    case "code":{draft.keyId=d.id;const k=keyById(d.id);if(k)ui.exam=k.exam;renderExamSel();renderCodes();changed();break}
+    case "cell":{const p=+d.p,i=+d.i;if(ui.act&&ui.act.p===p&&ui.act.i===i)setAct(null);else{document.activeElement&&document.activeElement.blur&&document.activeElement.blur();setAct({p,i})}break}
+    case "kp":keypad(d.k);break;
+    case "p2":{const q=+d.q,j=+d.j;draft.p2[q][j]=draft.p2[q][j]===d.v?"":d.v;if(ui.act)setAct(null);changed();break}
+    case "p4":{const i=+d.i,v=+d.v;draft.p4[i]=draft.p4[i]===v?null:v;changed();break}
+    case "save":saveResult();break;
+    case "clear":resetDraft();break;
+    case "open":openResult(d.id);break;
+    case "del-ask":ui.delAsk=true;renderEditBar();break;
+    case "del-no":ui.delAsk=false;renderEditBar();break;
+    case "del-yes":try{await deleteResult(draft.id);toast("Đã xoá bài của "+draft.name);resetDraft()}catch(e){toast(errMsg(e))}break;
+    case "export":exportXlsx();break;
+    case "copy":copyTable();break;
+    case "backup":exportBackup();break;
+    case "import":$("importFile").click();break;
+    case "key-new":{const cur=keyById(draft.keyId);ui.keyEdit={id:null,exam:ui.exam||(cur&&cur.exam)||"",grade:gradeOf(draft.cls)||"",code:"",p1:Array(N1).fill(""),p2:[["","","",""],["","","",""]],p3:Array(N3).fill("")};ui.keyDelAsk=false;renderKeys();window.scrollTo({top:0});break}
+    case "key-open":{const k=keyById(d.id);if(!k)break;ui.keyEdit={id:k.id,exam:k.exam,grade:k.grade,code:k.code,p1:k.p1.slice(),p2:k.p2.map(x=>x.slice()),p3:k.p3.slice()};ui.keyDelAsk=false;renderKeys();window.scrollTo({top:0});break}
+    case "key-grade":readKeyForm();ui.keyEdit.grade=d.g;renderKeyEditor();break;
+    case "key-p2":ui.keyEdit.p2[+d.q][+d.j]=d.v;renderKeyP2();break;
+    case "key-save":saveKey();break;
+    case "key-cancel":ui.keyEdit=null;renderKeys();break;
+    case "key-del-ask":readKeyForm();ui.keyDelAsk=true;renderKeyEditor();break;
+    case "key-del-no":readKeyForm();ui.keyDelAsk=false;renderKeyEditor();break;
+    case "key-del-yes":try{const c=ui.keyEdit.code;await deleteKey(ui.keyEdit.id);ui.keyEdit=null;ui.keyDelAsk=false;toast("Đã xoá mã "+c);renderKeys()}catch(e){toast(errMsg(e))}break;
+  }
+});
+document.addEventListener("input",ev=>{
+  const t=ev.target;
+  if(t.id==="name"){draft.name=t.value;changed()}
+  else if(t.id==="cls"){draft.cls=t.value;const k=keyById(draft.keyId),g=gradeOf(t.value);if(k&&g&&k.grade!==g)draft.keyId="";renderCodes();changed()}
+  else if(t.id==="note"){draft.note=t.value;clearTimeout(dT);dT=setTimeout(()=>LS.set("cb.draft",draft),300)}
+  else if(t.id==="kP1"){const v=t.value.toUpperCase().replace(/[^ABCD]/g,"");if(v!==t.value)t.value=v;$("kP1n").textContent=v.length}
+});
+document.addEventListener("change",ev=>{
+  const t=ev.target;
+  if(t.id==="examSel"){ui.exam=t.value;const k=keyById(draft.keyId);if(k&&k.exam!==ui.exam)draft.keyId="";saveUi();renderCodes();changed()}
+  else if(t.id==="check"){ui.check=t.checked;saveUi();changed()}
+  else if(t.id==="lExam"){ui.listExam=t.value;ui.listCls="";saveUi();renderList()}
+  else if(t.id==="lCls"){ui.listCls=t.value;saveUi();renderList()}
+  else if(t.id==="importFile"&&t.files&&t.files[0]){importBackup(t.files[0]);t.value=""}
+});
+document.addEventListener("focusin",ev=>{if(ev.target.matches("input,textarea,select")&&ui.act)setAct(null)});
+document.addEventListener("keydown",ev=>{
+  if(!ui.act||ev.target.matches("input,textarea,select")||ev.ctrlKey||ev.metaKey||ev.altKey)return;
+  const k=ev.key;let m=null;
+  if(ui.act.p===1&&/^[abcdABCD]$/.test(k))m=k.toUpperCase();
+  else if(ui.act.p===3&&/^[\d,.\-]$/.test(k))m=k==="."?",":k;
+  else if(k==="Backspace")m=ui.act.p===1?"clr":"bs";
+  else if(k==="ArrowLeft")m="prev";else if(k==="ArrowRight"||k==="Enter"||k==="Tab")m="next";else if(k==="Escape")m="hide";
+  if(m){ev.preventDefault();keypad(m)}
+});
+
+["grade","list","keys"].forEach(x=>$("tab-"+x).hidden=x!==ui.tab);
+document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===ui.tab));
+init();
+})();
+</script>
+
+</body>
+</html>

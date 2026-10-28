@@ -1,0 +1,5 @@
+# Không đưa đáp án, bảng điểm hay file sao lưu lên GitHub
+*.json
+*.xlsx
+*.csv
+~$*
